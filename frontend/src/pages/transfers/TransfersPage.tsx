@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { cancelTransfer, checkTransferAvailability, confirmTransfer, exportTransfersCsv, getTransfer, getTransferSummary, listTransfers, validateTransfer, type TransferFilters } from '../../api/transfers.ts'
 import { DOCUMENT_STATUS_LABEL, type DocumentStatus, type Paginated, type Transfer, type TransferStockChange, type TransferSummary, type Warehouse } from '../../api/types.ts'
 import { listWarehouses } from '../../api/warehouses.ts'
 import { usePillAction } from '../../context/pillActions.ts'
 import { useToast } from '../../context/toast.ts'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
+import { ROUTES } from '../../routes.ts'
 import { errorMessage, formatQty, useDebouncedValue } from '../products/productsData.ts'
 import { DetailPanel } from './components/DetailPanel.tsx'
 import { FilterSelect } from './components/FilterSelect.tsx'
@@ -29,6 +31,7 @@ interface ValidationResult {
 
 export default function TransfersPage() {
   useDocumentTitle('StockSense — Internal Transfers')
+  const navigate = useNavigate()
   const { showToast } = useToast()
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -396,7 +399,7 @@ export default function TransfersPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="hover:text-indigo-600 font-medium flex items-center gap-1 transition-colors cursor-pointer">
+              <span className="hover:text-indigo-600 font-medium flex items-center gap-1 transition-colors cursor-pointer" onClick={() => navigate(ROUTES.dashboard)}>
                 <span className="material-symbols-outlined text-[15px]">sync_alt</span>
                 <span>Operations</span>
               </span>

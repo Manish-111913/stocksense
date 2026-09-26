@@ -51,7 +51,10 @@ export class CreateAdjustmentDto {
   notes?: string;
 }
 
-/** DRAFT only. Changing product/location re-reads the recorded quantity */
+/**
+ * Not yet applied or canceled. Changing product/location re-reads the recorded quantity; changing only the
+ * physical quantity recomputes the difference against the same recorded snapshot (use recount for a stale one)
+ */
 export class UpdateAdjustmentDto {
   @IsOptional()
   @IsUUID()
@@ -85,6 +88,16 @@ export class UpdateAdjustmentDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+}
+
+/** A new physical count; the recorded quantity + stock version are re-read with it */
+export class RecountAdjustmentDto {
+  /** @example 147 */
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Max(MAX_QUANTITY)
+  physicalQuantity: number;
 }
 
 export class AdjustmentFiltersDto {

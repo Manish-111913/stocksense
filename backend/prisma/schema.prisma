@@ -337,6 +337,8 @@ model StockLedger {
   @@index([movementType])
   @@index([productId])
   @@index([referenceId])
+  @@index([warehouseId])
+  @@index([performedBy])
   @@map("stock_ledger")
 }
 

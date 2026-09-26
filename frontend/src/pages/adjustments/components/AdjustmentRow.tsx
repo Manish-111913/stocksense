@@ -1,6 +1,6 @@
 import type { Adjustment, DocumentStatus } from '../../../api/types.ts'
 import { formatDate, formatQty } from '../../products/productsData.ts'
-import { differenceBadgeClass, signedQty, statusLabel } from '../data.ts'
+import { differenceBadgeClass, isOpenStatus, signedQty, statusLabel } from '../data.ts'
 
 export function StatusBadge({ status }: { status: DocumentStatus }) {
   if (status === 'DONE') {
@@ -24,7 +24,7 @@ export function StatusBadge({ status }: { status: DocumentStatus }) {
 
 export function StaleBadge() {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/60" title="Stock moved since this count was recorded. Refresh before applying.">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/60" title="Stock moved since this count was recorded. Recount before applying.">
       <span className="material-symbols-outlined text-[12px]">warning</span>
       Stale
     </span>
@@ -43,11 +43,12 @@ interface AdjustmentRowProps {
   onApply: (adjustment: Adjustment) => void
   onEdit: (adjustment: Adjustment) => void
   onCancel: (adjustment: Adjustment) => void
-  onRefresh: (adjustment: Adjustment) => void
+  /** Stale: ask for a new physical count */
+  onRecount: (adjustment: Adjustment) => void
 }
 
-export function AdjustmentRow({ adjustment: a, isBusy, canApply, onInspect, onApply, onEdit, onCancel, onRefresh }: AdjustmentRowProps) {
-  const isDraft = a.status === 'DRAFT'
+export function AdjustmentRow({ adjustment: a, isBusy, canApply, onInspect, onApply, onEdit, onCancel, onRecount }: AdjustmentRowProps) {
+  const isOpen = isOpenStatus(a.status)
   const isCanceled = a.status === 'CANCELED'
   const unit = a.product.unitOfMeasure
 
@@ -90,7 +91,7 @@ export function AdjustmentRow({ adjustment: a, isBusy, canApply, onInspect, onAp
       <td className="py-3.5 px-4 text-center">
         <div className="flex flex-col items-center gap-1">
           <StatusBadge status={a.status} />
-          {isDraft && a.isStale && <StaleBadge />}
+          {isOpen && a.isStale && <StaleBadge />}
         </div>
       </td>
       <td className="py-3.5 px-5">
@@ -99,29 +100,29 @@ export function AdjustmentRow({ adjustment: a, isBusy, canApply, onInspect, onAp
       </td>
       <td className="py-3.5 px-5 text-right" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-1.5">
-          {isDraft && a.isStale && (
-            <button className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium shadow-xs flex items-center gap-1 transition-all disabled:opacity-50" disabled={isBusy} onClick={() => onRefresh(a)} title="Refresh recorded quantity">
-              <span className="material-symbols-outlined text-[15px]">refresh</span>
-              <span>Refresh</span>
+          {isOpen && a.isStale && (
+            <button className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium shadow-xs flex items-center gap-1 transition-all disabled:opacity-50" disabled={isBusy} onClick={() => onRecount(a)} title="Recount physical quantity">
+              <span className="material-symbols-outlined text-[15px]">fact_check</span>
+              <span>Recount</span>
             </button>
           )}
-          {isDraft && canApply && (
+          {isOpen && canApply && (
             <button className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1 transition-all disabled:opacity-50" disabled={isBusy} onClick={() => onApply(a)}>
               <span className="material-symbols-outlined text-[15px]">bolt</span>
               <span>Apply</span>
             </button>
           )}
-          {isDraft && (
-            <button className={ICON_BUTTON} disabled={isBusy} onClick={() => onEdit(a)} title="Edit draft">
+          {isOpen && (
+            <button className={ICON_BUTTON} disabled={isBusy} onClick={() => onEdit(a)} title="Edit adjustment">
               <span className="material-symbols-outlined text-[18px]">edit</span>
             </button>
           )}
-          {isDraft && (
+          {isOpen && (
             <button className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={isBusy} onClick={() => onCancel(a)} title="Cancel adjustment">
               <span className="material-symbols-outlined text-[18px]">block</span>
             </button>
           )}
-          {!isDraft && (
+          {!isOpen && (
             <button className={ICON_BUTTON} onClick={() => onInspect(a)} title="View details">
               <span className="material-symbols-outlined text-[18px]">visibility</span>
             </button>

@@ -114,7 +114,15 @@ export class TransferFiltersDto {
 
   @IsOptional()
   @IsUUID()
+  sourceWarehouseId?: string;
+
+  @IsOptional()
+  @IsUUID()
   sourceLocationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  destinationWarehouseId?: string;
 
   @IsOptional()
   @IsUUID()

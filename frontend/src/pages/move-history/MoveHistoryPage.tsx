@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { exportLedgerCsv, getLedgerSummary, listLedger, type LedgerFilters } from '../../api/ledger.ts'
 import type { LedgerEntry, LedgerSummary, Location, MovementType, Paginated, Warehouse } from '../../api/types.ts'
 import { listLocations, listWarehouses } from '../../api/warehouses.ts'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
 import { usePageChrome } from '../../hooks/usePageChrome.ts'
+import { ROUTES } from '../../routes.ts'
 import { errorMessage, formatQty, useDebouncedValue } from '../products/productsData.ts'
-import { DATE_OPTIONS, dateRangeFor, MOVEMENT_BADGES, MOVEMENT_OPTIONS, pageList, type DatePreset, type SelectOption } from './data.ts'
+import { DATE_OPTIONS, dateRangeFor, MOVEMENT_BADGES, MOVEMENT_OPTIONS, MOVEMENT_TYPES, pageList, type DatePreset, type SelectOption } from './data.ts'
 import { InspectorDrawer } from './InspectorDrawer.tsx'
 import { KpiCards } from './KpiCards.tsx'
 import { LedgerDock } from './LedgerDock.tsx'
@@ -28,6 +30,7 @@ interface LedgerOverview {
 }
 
 export default function MoveHistoryPage() {
+  const navigate = useNavigate()
   useDocumentTitle('StockSense — Stock Ledger & Move History')
   usePageChrome('bg-slate-100/80 text-slate-900 p-2 sm:p-4 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white', 'ss-ledger')
 
@@ -291,7 +294,7 @@ export default function MoveHistoryPage() {
         {/* Breadcrumbs & Operations Sub-Header */}
         <div className="mb-5">
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
-            <span className="hover:text-slate-800 cursor-pointer">Operations</span>
+            <span className="hover:text-slate-800 cursor-pointer" onClick={() => navigate(ROUTES.dashboard)}>Operations</span>
             <span className="text-slate-400">/</span>
             <span className="hover:text-slate-800 cursor-pointer">Stock Ledger</span>
             <span className="text-slate-400">/</span>
@@ -347,7 +350,7 @@ export default function MoveHistoryPage() {
             </button>
             <button className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 shadow-2xs transition-colors flex items-center gap-1 disabled:opacity-60" disabled={!inspected} onClick={() => setIsDrawerOpen(true)} type="button">
               <span className="material-symbols-outlined text-[13px]">visibility</span>
-              {inspected ? `Inspect ${inspected.reference.code}` : 'Inspect'}
+              {inspected ? `Inspect ${inspected.reference}` : 'Inspect'}
             </button>
           </div>
         </div>
@@ -372,7 +375,7 @@ export default function MoveHistoryPage() {
             <div className="flex flex-wrap items-center gap-2">
               <LedgerFilterSelect
                 id="ledgerMovementType"
-                label={<>Movement Type: <strong className="font-semibold text-slate-900">{movementType ? MOVEMENT_BADGES[movementType].label : 'All (4)'}</strong></>}
+                label={<>Movement Type: <strong className="font-semibold text-slate-900">{movementType ? MOVEMENT_BADGES[movementType].label : `All (${MOVEMENT_TYPES.length})`}</strong></>}
                 onChange={(value) => updateFilter(() => setMovementType(value as MovementType | ''))}
                 options={MOVEMENT_OPTIONS}
                 value={movementType}

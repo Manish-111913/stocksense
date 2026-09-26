@@ -3,7 +3,7 @@ import { paginated, skipTake, type Paginated } from '../common/pagination.js';
 import { DocumentStatus, Prisma } from '../generated/prisma/client.js';
 import { StockService } from '../inventory/stock.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { AdjustmentFiltersDto, AdjustmentQueryDto, CreateAdjustmentDto, UpdateAdjustmentDto } from './dto/adjustment.dto.js';
+import type { AdjustmentFiltersDto, AdjustmentQueryDto, CreateAdjustmentDto, RecountAdjustmentDto, UpdateAdjustmentDto } from './dto/adjustment.dto.js';
 
 type Tx = Prisma.TransactionClient;
 type UserRef = { id: string; fullName: string };
@@ -49,11 +49,15 @@ type AdjustmentWithRelations = Prisma.InventoryAdjustmentGetPayload<{ include: t
 
 export const OPENING_STOCK_REASON = 'Opening stock';
 
+/** Statuses that are not applied or canceled yet (new adjustments are READY) */
+const OPEN_STATUSES: DocumentStatus[] = ['DRAFT', 'WAITING', 'READY'];
+
 /**
  * Inventory adjustments: reconcile recorded stock with a physical count.
- * DRAFT →apply→ DONE (stock set to the physical count, ledger ADJUSTMENT_IN/OUT); DRAFT →cancel→ CANCELED.
- * The recorded quantity + stock version are read by the backend when the draft is made; apply is rejected
- * (STALE_STOCK) if stock moved since, so an old count can't overwrite newer movements. `refresh` re-reads them.
+ * create → READY →apply→ DONE (stock set to the physical count, ledger ADJUSTMENT_IN/OUT); READY →cancel→ CANCELED.
+ * The recorded quantity + stock version are read by the backend when the adjustment is made; apply is rejected
+ * (STOCK_CHANGED_SINCE_ADJUSTMENT) if stock moved since, so an old count can't overwrite newer movements.
+ * A stale adjustment can only be brought current by a recount (new physical count + fresh recorded snapshot).
  */
 @Injectable()
 export class AdjustmentsService {
@@ -120,7 +124,7 @@ export class AdjustmentsService {
   async update(id: string, dto: UpdateAdjustmentDto, userId: string): Promise<AdjustmentView> {
     await this.prisma.$transaction(async (tx) => {
       const current = await lockAdjustment(tx, id);
-      if (current.status !== 'DRAFT') {
+      if (!OPEN_STATUSES.includes(current.status)) {
         throw new ConflictException(`Adjustment ${current.reference} is ${current.status} and can no longer be edited`);
       }
       const productId = dto.productId ?? current.productId;
@@ -152,20 +156,25 @@ export class AdjustmentsService {
     return this.findOne(id);
   }
 
-  /** Re-reads the recorded quantity + version from current stock (for a stale DRAFT) */
-  async refresh(id: string, userId: string): Promise<AdjustmentView> {
+  /**
+   * A new physical count for a stale adjustment: stores it together with a fresh recorded quantity + stock
+   * version. Re-reading the recorded quantity alone would let the old count overwrite newer movements.
+   */
+  async recount(id: string, dto: RecountAdjustmentDto, userId: string): Promise<AdjustmentView> {
     await this.prisma.$transaction(async (tx) => {
       const current = await lockAdjustment(tx, id);
-      if (current.status !== 'DRAFT') {
-        throw new ConflictException(`Adjustment ${current.reference} is ${current.status} and can no longer be refreshed`);
+      if (!OPEN_STATUSES.includes(current.status)) {
+        throw new ConflictException(`Adjustment ${current.reference} is ${current.status} and can no longer be recounted`);
       }
       const recorded = await this.stock.getAvailable(tx, current.productId, current.locationId);
+      const physicalQuantity = new Prisma.Decimal(dto.physicalQuantity);
       await tx.inventoryAdjustment.update({
         where: { id },
         data: {
           recordedQuantity: recorded.quantity,
           recordedStockVersion: recorded.version,
-          difference: new Prisma.Decimal(current.physicalQuantity).minus(recorded.quantity),
+          physicalQuantity,
+          difference: physicalQuantity.minus(recorded.quantity),
           updatedBy: userId,
         },
       });
@@ -176,7 +185,7 @@ export class AdjustmentsService {
   async cancel(id: string, userId: string): Promise<AdjustmentView> {
     await this.prisma.$transaction(async (tx) => {
       const current = await lockAdjustment(tx, id);
-      if (current.status !== 'DRAFT') {
+      if (!OPEN_STATUSES.includes(current.status)) {
         throw new ConflictException(`Adjustment ${current.reference} is ${current.status} and can't be canceled`);
       }
       await tx.inventoryAdjustment.update({ where: { id }, data: { status: 'CANCELED', updatedBy: userId } });
@@ -184,8 +193,9 @@ export class AdjustmentsService {
     return this.findOne(id);
   }
 
-  /** DRAFT → DONE: stock := physical count (stale check), ledger, status — one transaction */
+  /** READY → DONE: stock := physical count (stale check), ledger, status — one transaction */
   async apply(id: string, userId: string): Promise<AdjustmentView> {
+    // A repeated apply (retry / double click) is idempotent: returns the DONE adjustment, nothing moves again
     await this.prisma.$transaction((tx) => this.applyDraft(tx, id, userId));
     return this.findOne(id);
   }
@@ -226,6 +236,7 @@ export class AdjustmentsService {
         difference: physicalQuantity.minus(recorded.quantity),
         reason: dto.reason,
         notes: dto.notes || null,
+        status: 'READY',
         createdBy: userId,
         updatedBy: userId,
       },
@@ -236,12 +247,12 @@ export class AdjustmentsService {
 
   private async applyDraft(tx: Tx, id: string, userId: string) {
     const current = await lockAdjustment(tx, id);
-    if (current.status === 'DONE') throw new ConflictException(`Adjustment ${current.reference} has already been applied`);
-    if (current.status !== 'DRAFT') {
+    if (current.status === 'DONE') return;
+    if (!OPEN_STATUSES.includes(current.status)) {
       throw new ConflictException(`Adjustment ${current.reference} is ${current.status} and can't be applied`);
     }
 
-    // Throws STALE_STOCK when stock changed since recordedQuantity/version were read
+    // Throws STOCK_CHANGED_SINCE_ADJUSTMENT when stock changed since recordedQuantity/version were read
     const result = await this.stock.apply(
       tx,
       [
@@ -295,7 +306,7 @@ export class AdjustmentsService {
         notes: a.notes,
         currentQuantity,
         isStale:
-          a.status === 'DRAFT' &&
+          OPEN_STATUSES.includes(a.status) &&
           (currentVersion !== a.recordedStockVersion || currentQuantity !== a.recordedQuantity.toNumber()),
         createdBy: a.createdByUser,
         appliedBy: a.appliedByUser,

@@ -60,7 +60,7 @@ export function LedgerRow({ entry, isSelected, onInspect }: LedgerRowProps) {
   function openDocument(event: MouseEvent<HTMLAnchorElement>) {
     event.preventDefault()
     event.stopPropagation()
-    navigate(documentPath(entry.reference))
+    navigate(documentPath(entry))
   }
 
   function renderFlow() {
@@ -93,7 +93,7 @@ export function LedgerRow({ entry, isSelected, onInspect }: LedgerRowProps) {
       </td>
       <td className="py-3.5 px-4 whitespace-nowrap">
         <a className="font-mono font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1" href="#" onClick={openDocument} title="Open source document">
-          {entry.reference.code}
+          {entry.reference}
           <span className="material-symbols-outlined text-[13px]">arrow_outward</span>
         </a>
         <div className="text-[11px] text-slate-400 font-mono">{DIRECTION_LABEL[entry.direction]} · {entry.warehouse.code}</div>
@@ -117,7 +117,7 @@ export function LedgerRow({ entry, isSelected, onInspect }: LedgerRowProps) {
       <td className="py-3.5 px-4">
         {renderFlow()}
         <div className="text-[11px] text-slate-400 mt-0.5">
-          {entry.movementType === 'ADJUSTMENT' ? `By ${entry.performedBy.fullName}` : balance ? `${ownPlace.code} balance: ${balance}` : `By ${entry.performedBy.fullName}`}
+          {entry.movementType === 'ADJUSTMENT' ? `By ${entry.performedBy.name}` : balance ? `${ownPlace.code} balance: ${balance}` : `By ${entry.performedBy.name}`}
         </div>
       </td>
       <td className="py-3.5 px-4 whitespace-nowrap text-right">

@@ -73,7 +73,7 @@ export function InspectorDrawer({ entry, isOpen, onClose }: InspectorDrawerProps
 
   function openDocument(event?: MouseEvent<HTMLElement>) {
     event?.preventDefault()
-    if (entry) navigate(documentPath(entry.reference))
+    if (entry) navigate(documentPath(entry))
   }
 
   return (
@@ -83,7 +83,7 @@ export function InspectorDrawer({ entry, isOpen, onClose }: InspectorDrawerProps
         <div>
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px] text-indigo-600">receipt_long</span>
-            <h3 className="text-base font-mono font-bold text-slate-900">{entry.reference.code}</h3>
+            <h3 className="text-base font-mono font-bold text-slate-900">{entry.reference}</h3>
             <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
               Posted
             </span>
@@ -102,7 +102,7 @@ export function InspectorDrawer({ entry, isOpen, onClose }: InspectorDrawerProps
         <div>
           <div className="text-xs font-bold text-emerald-900">Committed to Ledger</div>
           <p className="text-xs text-emerald-800/90 mt-0.5 leading-relaxed">
-            Written when {entry.reference.code} was {ACTION_TEXT[entry.movementType]}. The ledger is append-only: entries can&apos;t be edited or deleted.
+            Written when {entry.reference} was {ACTION_TEXT[entry.movementType]}. The ledger is append-only: entries can&apos;t be edited or deleted.
           </p>
         </div>
       </div>
@@ -151,7 +151,7 @@ export function InspectorDrawer({ entry, isOpen, onClose }: InspectorDrawerProps
             <span className="text-slate-500">Performed By</span>
             <span className="font-medium text-slate-900 flex items-center gap-1">
               <span className="material-symbols-outlined text-[14px] text-indigo-600">person</span>
-              {entry.performedBy.fullName}
+              {entry.performedBy.name}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -164,7 +164,7 @@ export function InspectorDrawer({ entry, isOpen, onClose }: InspectorDrawerProps
           </div>
           <div className="flex items-center justify-between">
             <span className="text-slate-500">Source Document</span>
-            <a className="font-mono font-semibold text-indigo-600 hover:underline" href="#" onClick={openDocument}>{entry.reference.code}</a>
+            <a className="font-mono font-semibold text-indigo-600 hover:underline" href="#" onClick={openDocument}>{entry.reference}</a>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-slate-500">Immutability Status</span>

@@ -118,12 +118,23 @@ export class AuthService implements OnModuleInit {
   // Forgot password → verify OTP → reset password
   // ---------------------------------------------------------------------------
 
-  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+  /** OTP timings from config, returned with every forgot-password response so the UI timers match the server */
+  private otpPolicy() {
+    return {
+      expiresInSeconds: Number(this.config.get('OTP_EXPIRY_MINUTES', 5)) * 60,
+      resendCooldownSeconds: Number(this.config.get('OTP_RESEND_COOLDOWN_SECONDS', 30)),
+    };
+  }
+
+  async forgotPassword(
+    dto: ForgotPasswordDto,
+  ): Promise<{ message: string; expiresInSeconds: number; resendCooldownSeconds: number }> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const response = { message: FORGOT_PASSWORD_MESSAGE, ...this.otpPolicy() };
 
     // Same response whether or not the account exists (no account enumeration)
     if (!user || user.status !== 'ACTIVE') {
-      return { message: FORGOT_PASSWORD_MESSAGE };
+      return response;
     }
 
     const cooldownSeconds = Number(this.config.get('OTP_RESEND_COOLDOWN_SECONDS', 30));
@@ -133,7 +144,7 @@ export class AuthService implements OnModuleInit {
       select: { createdAt: true },
     });
     if (latest && Date.now() - latest.createdAt.getTime() < cooldownSeconds * 1000) {
-      return { message: FORGOT_PASSWORD_MESSAGE };
+      return response;
     }
 
     const otp = randomInt(0, 1_000_000).toString().padStart(6, '0');
@@ -156,7 +167,7 @@ export class AuthService implements OnModuleInit {
     ]);
 
     await this.mail.sendPasswordResetOtp(user.email, user.fullName, otp, expiryMinutes);
-    return { message: FORGOT_PASSWORD_MESSAGE };
+    return response;
   }
 
   async verifyOtp(dto: VerifyOtpDto): Promise<{ resetToken: string }> {

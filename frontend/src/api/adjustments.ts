@@ -3,9 +3,10 @@ import type { Adjustment, AdjustmentSummary, DocumentStatus, Paginated } from '.
 
 /**
  * Adjustment workflow (enforced by the backend):
- * create DRAFT (backend reads the recorded quantity) →apply→ DONE (stock := physical count + ledger)
- * DRAFT →cancel→ CANCELED. Apply is INVENTORY_MANAGER only (403 otherwise).
- * Apply fails with 409 STALE_STOCK if stock moved since the draft; `refreshAdjustment` re-reads it.
+ * create READY (backend reads the recorded quantity + stock version) →apply→ DONE (stock := physical count + ledger)
+ * READY →cancel→ CANCELED. Apply is INVENTORY_MANAGER only (403 otherwise).
+ * Apply fails with 409 STOCK_CHANGED_SINCE_ADJUSTMENT if stock moved after the count was recorded;
+ * `recountAdjustment` stores a NEW physical count and re-reads the recorded quantity (clears staleness).
  */
 
 export interface AdjustmentFilters {
@@ -45,13 +46,14 @@ export function createAdjustment(input: AdjustmentInput) {
   return api<Adjustment>('POST', '/adjustments', { body: input })
 }
 
-/** DRAFT only */
+/** Open adjustments only. Changing just the physical count keeps the recorded snapshot (does not clear staleness) */
 export function updateAdjustment(id: string, input: Partial<AdjustmentInput>) {
   return api<Adjustment>('PATCH', `/adjustments/${id}`, { body: input })
 }
 
-export function refreshAdjustment(id: string) {
-  return api<Adjustment>('POST', `/adjustments/${id}/refresh`)
+/** Stale adjustment: re-read the recorded quantity + stock version and store the new physical count (≥ 0, max 3 decimals) */
+export function recountAdjustment(id: string, physicalQuantity: number) {
+  return api<Adjustment>('POST', `/adjustments/${id}/recount`, { body: { physicalQuantity } })
 }
 
 export function applyAdjustment(id: string) {

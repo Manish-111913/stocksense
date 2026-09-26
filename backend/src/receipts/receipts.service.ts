@@ -195,10 +195,10 @@ export class ReceiptsService {
    * READY → DONE. One transaction: lock the receipt, re-check everything, increase stock for every
    * line (StockService writes the ledger), then mark it DONE. Any failure rolls all of it back.
    */
-  async validate(id: string, userId: string): Promise<ReceiptView & { stockChanges: ReceiptStockChange[] }> {
+  async validate(id: string, userId: string): Promise<ReceiptView & { stockChanges: ReceiptStockChange[]; alreadyCompleted: boolean }> {
     const stockChanges = await this.prisma.$transaction(async (tx) => {
       const current = await lockReceipt(tx, id);
-      if (current.status === 'DONE') throw new ConflictException(`Receipt ${current.reference} has already been validated`);
+      if (current.status === 'DONE') return null;
       if (current.status !== 'READY') {
         throw new ConflictException(
           `Receipt ${current.reference} is ${current.status}. Only READY receipts can be validated.`,
@@ -236,7 +236,8 @@ export class ReceiptsService {
       }));
     });
 
-    return { ...(await this.findOne(id)), stockChanges };
+    // A repeated validate (retry / double click) is idempotent: nothing moves again
+    return { ...(await this.findOne(id)), stockChanges: stockChanges ?? [], alreadyCompleted: stockChanges === null };
   }
 
   // ---------------------------------------------------------------------------

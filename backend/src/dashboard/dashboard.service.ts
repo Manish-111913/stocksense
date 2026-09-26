@@ -1,57 +1,62 @@
 import { Injectable } from '@nestjs/common';
-
-import { IsEnum, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { paginated, PaginationQueryDto, type Paginated } from '../common/pagination.js';
-import { Trim } from '../common/transforms.js';
+import { dateBounds } from '../common/date-range.js';
+import { paginated, type Paginated } from '../common/pagination.js';
 import { DocumentStatus, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import type {
+  DashboardFiltersDto,
+  DocumentType,
+  OperationsQueryDto,
+  StockAlertsQueryDto,
+  StockScopeDto,
+} from './dto/dashboard-query.dto.js';
 
-export const DOCUMENT_TYPES = ['RECEIPT', 'DELIVERY', 'INTERNAL_TRANSFER', 'ADJUSTMENT'] as const;
-export type DocumentType = (typeof DOCUMENT_TYPES)[number];
-
-export class OperationsQueryDto extends PaginationQueryDto {
-  /** Matches reference, product name or SKU */
-  @IsOptional()
-  @Trim()
-  @IsString()
-  @MaxLength(200)
-  search?: string;
-
-  @IsOptional()
-  @IsIn(DOCUMENT_TYPES)
-  documentType?: DocumentType;
-
-  @IsOptional()
-  @IsEnum(DocumentStatus)
-  status?: DocumentStatus;
-
-  /** Transfers match on source or destination */
-  @IsOptional()
-  @IsUUID()
-  warehouseId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  locationId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  categoryId?: string;
+export interface InventorySummary {
+  /** Distinct active products with stock > 0 in the scope */
+  totalProductsInStock: number;
+  /** Active products (in the category filter) */
+  totalProducts: number;
+  /** 0 < stock <= reorder level */
+  lowStock: number;
+  /** stock = 0 */
+  outOfStock: number;
 }
 
-export interface DashboardSummary {
-  /** Active products with stock > 0 */
-  productsInStock: number;
-  totalProducts: number;
-  categories: number;
-  warehouses: number;
-  lowStock: number;
-  outOfStock: number;
-  /** Receipts not yet validated or canceled (DRAFT / WAITING / READY) */
+export interface OperationsSummary {
+  /** DRAFT / WAITING / READY (narrowed to the status filter when it is one of these) */
   pendingReceipts: number;
   pendingDeliveries: number;
-  scheduledTransfers: number;
-  draftAdjustments: number;
+  internalTransfersScheduled: number;
+  pendingAdjustments: number;
+}
+
+export interface DashboardSummary extends InventorySummary, OperationsSummary {
+  /** Active categories / warehouses (not filtered) */
+  categories: number;
+  warehouses: number;
+}
+
+export interface DashboardView {
+  summary: DashboardSummary;
+  /** The filters that were applied (null = not set) */
+  filters: {
+    documentType: DocumentType | null;
+    status: DocumentStatus | null;
+    warehouseId: string | null;
+    locationId: string | null;
+    categoryId: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+  };
+}
+
+export interface StockAlert {
+  product: { id: string; name: string; sku: string; unitOfMeasure: string };
+  category: { id: string; name: string };
+  reorderLevel: number;
+  /** Summed over the warehouse / location scope */
+  quantity: number;
+  status: 'LOW_STOCK' | 'OUT_OF_STOCK';
 }
 
 /** One document line (a product on a receipt / delivery / transfer, or one adjustment) */
@@ -68,73 +73,160 @@ export interface OperationRow {
   location: { warehouseName: string; locationName: string };
   /** Transfers only */
   destination: { warehouseName: string; locationName: string } | null;
-  /** Supplier (receipts) or customer (deliveries) */
+  /** Supplier (receipts), customer (deliveries) or reason (adjustments) */
   partner: string | null;
   /** Receipts/deliveries/transfers: line quantity; adjustments: signed difference */
   quantity: number;
 }
 
-const PENDING = Prisma.sql`status IN ('DRAFT', 'WAITING', 'READY')`;
+type Condition = Prisma.Sql | false | undefined | null | '';
 
-/** Read-only aggregates over the operational tables (no separate analytics data) */
+const PENDING_STATUSES: DocumentStatus[] = ['DRAFT', 'WAITING', 'READY'];
+
+/**
+ * Read-only aggregation over the real tables (products, stock, documents). The dashboard keeps no numbers of
+ * its own, so it can never drift from inventory. Filters apply where they mean something:
+ * - stock KPIs / alerts: warehouse, location, category
+ * - pending-document KPIs: warehouse, location, category, status, date range
+ * - operations list: all of them, plus document type and search
+ */
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async summary(): Promise<DashboardSummary> {
-    const [[stock], [counts]] = await Promise.all([
-      this.prisma.$queryRaw<{ in_stock: number; total: number; low: number; out: number }[]>`
-        SELECT count(*) FILTER (WHERE qty > 0)::int AS in_stock,
-               count(*)::int AS total,
-               count(*) FILTER (WHERE qty > 0 AND qty <= reorder_level)::int AS low,
-               count(*) FILTER (WHERE qty = 0)::int AS out
-        FROM (
-          SELECT p.id, p.reorder_level, COALESCE(SUM(s.quantity), 0) AS qty
-          FROM products p LEFT JOIN stock s ON s.product_id = p.id
-          WHERE p.status = 'ACTIVE'
-          GROUP BY p.id
-        ) t`,
-      this.prisma.$queryRaw<
-        { categories: number; warehouses: number; receipts: number; deliveries: number; transfers: number; adjustments: number }[]
-      >`
+  async dashboard(filters: DashboardFiltersDto): Promise<DashboardView> {
+    const [inventory, operations, [counts]] = await Promise.all([
+      this.inventorySummary(filters),
+      this.operationsSummary(filters),
+      this.prisma.$queryRaw<{ categories: number; warehouses: number }[]>`
         SELECT (SELECT count(*) FROM categories WHERE status = 'ACTIVE')::int AS categories,
-               (SELECT count(*) FROM warehouses WHERE status = 'ACTIVE')::int AS warehouses,
-               (SELECT count(*) FROM receipts WHERE ${PENDING})::int AS receipts,
-               (SELECT count(*) FROM deliveries WHERE ${PENDING})::int AS deliveries,
-               (SELECT count(*) FROM internal_transfers WHERE ${PENDING})::int AS transfers,
-               (SELECT count(*) FROM inventory_adjustments WHERE status = 'DRAFT')::int AS adjustments`,
+               (SELECT count(*) FROM warehouses WHERE status = 'ACTIVE')::int AS warehouses`,
     ]);
     return {
-      productsInStock: stock.in_stock,
-      totalProducts: stock.total,
-      categories: counts.categories,
-      warehouses: counts.warehouses,
-      lowStock: stock.low,
-      outOfStock: stock.out,
-      pendingReceipts: counts.receipts,
-      pendingDeliveries: counts.deliveries,
-      scheduledTransfers: counts.transfers,
-      draftAdjustments: counts.adjustments,
+      summary: { ...inventory, ...operations, categories: counts.categories, warehouses: counts.warehouses },
+      filters: {
+        documentType: filters.documentType ?? null,
+        status: filters.status ?? null,
+        warehouseId: filters.warehouseId ?? null,
+        locationId: filters.locationId ?? null,
+        categoryId: filters.categoryId ?? null,
+        dateFrom: filters.dateFrom ?? null,
+        dateTo: filters.dateTo ?? null,
+      },
     };
+  }
+
+  async inventorySummary(scope: StockScopeDto): Promise<InventorySummary> {
+    const [row] = await this.prisma.$queryRaw<InventorySummary[]>`
+      SELECT count(*) FILTER (WHERE qty > 0)::int AS "totalProductsInStock",
+             count(*)::int AS "totalProducts",
+             count(*) FILTER (WHERE qty > 0 AND qty <= reorder_level)::int AS "lowStock",
+             count(*) FILTER (WHERE qty = 0)::int AS "outOfStock"
+      FROM (${scopedProducts(scope)}) t`;
+    return row;
+  }
+
+  async operationsSummary(filters: DashboardFiltersDto): Promise<OperationsSummary> {
+    const statuses = filters.status ? PENDING_STATUSES.filter((s) => s === filters.status) : PENDING_STATUSES;
+    if (statuses.length === 0) {
+      // DONE / CANCELED documents are never pending
+      return { pendingReceipts: 0, pendingDeliveries: 0, internalTransfersScheduled: 0, pendingAdjustments: 0 };
+    }
+    const status = (column: string) =>
+      Prisma.sql`${Prisma.raw(column)} IN (${Prisma.join(statuses.map((s) => Prisma.sql`${s}::document_status`))})`;
+    const { warehouseId: w, locationId: l, categoryId: c } = filters;
+
+    const receipts: Condition[] = [
+      status('r.status'),
+      w && Prisma.sql`r.warehouse_id = ${w}::uuid`,
+      l && Prisma.sql`r.location_id = ${l}::uuid`,
+      ...dateConditions('r.receipt_date', filters),
+      c && Prisma.sql`EXISTS (SELECT 1 FROM receipt_items i JOIN products p ON p.id = i.product_id WHERE i.receipt_id = r.id AND p.category_id = ${c}::uuid)`,
+    ];
+    const deliveries: Condition[] = [
+      status('d.status'),
+      w && Prisma.sql`d.warehouse_id = ${w}::uuid`,
+      l && Prisma.sql`d.source_location_id = ${l}::uuid`,
+      ...dateConditions('d.delivery_date', filters),
+      c && Prisma.sql`EXISTS (SELECT 1 FROM delivery_items i JOIN products p ON p.id = i.product_id WHERE i.delivery_id = d.id AND p.category_id = ${c}::uuid)`,
+    ];
+    const transfers: Condition[] = [
+      status('t.status'),
+      w && Prisma.sql`(t.source_warehouse_id = ${w}::uuid OR t.destination_warehouse_id = ${w}::uuid)`,
+      l && Prisma.sql`(t.source_location_id = ${l}::uuid OR t.destination_location_id = ${l}::uuid)`,
+      ...dateConditions('t.transfer_date', filters),
+      c && Prisma.sql`EXISTS (SELECT 1 FROM internal_transfer_items i JOIN products p ON p.id = i.product_id WHERE i.transfer_id = t.id AND p.category_id = ${c}::uuid)`,
+    ];
+    const adjustments: Condition[] = [
+      status('a.status'),
+      w && Prisma.sql`a.warehouse_id = ${w}::uuid`,
+      l && Prisma.sql`a.location_id = ${l}::uuid`,
+      ...dateConditions('a.created_at', filters),
+      c && Prisma.sql`EXISTS (SELECT 1 FROM products p WHERE p.id = a.product_id AND p.category_id = ${c}::uuid)`,
+    ];
+
+    const [row] = await this.prisma.$queryRaw<OperationsSummary[]>`
+      SELECT (SELECT count(*) FROM receipts r WHERE ${and(receipts)})::int AS "pendingReceipts",
+             (SELECT count(*) FROM deliveries d WHERE ${and(deliveries)})::int AS "pendingDeliveries",
+             (SELECT count(*) FROM internal_transfers t WHERE ${and(transfers)})::int AS "internalTransfersScheduled",
+             (SELECT count(*) FROM inventory_adjustments a WHERE ${and(adjustments)})::int AS "pendingAdjustments"`;
+    return row;
+  }
+
+  /** Low / out-of-stock products for the scope (the rows behind the lowStock / outOfStock KPIs), out of stock first */
+  async stockAlerts(query: StockAlertsQueryDto): Promise<Paginated<StockAlert>> {
+    const alerts = Prisma.sql`
+      FROM (${scopedProducts(query)}) t
+      JOIN categories c ON c.id = t.category_id
+      WHERE t.qty = 0 OR t.qty <= t.reorder_level`;
+    const [rows, [counted]] = await Promise.all([
+      this.prisma.$queryRaw<
+        {
+          id: string;
+          name: string;
+          sku: string;
+          unit_of_measure: string;
+          reorder_level: Prisma.Decimal | string;
+          qty: Prisma.Decimal | string;
+          category_id: string;
+          category_name: string;
+        }[]
+      >`SELECT t.id, t.name, t.sku, t.unit_of_measure, t.reorder_level, t.qty, t.category_id, c.name AS category_name ${alerts}
+        ORDER BY (t.qty = 0) DESC, t.qty ASC, t.name ASC
+        LIMIT ${query.limit} OFFSET ${(query.page - 1) * query.limit}`,
+      this.prisma.$queryRaw<{ total: number }[]>`SELECT count(*)::int AS total ${alerts}`,
+    ]);
+    return paginated(
+      rows.map((row) => {
+        const quantity = new Prisma.Decimal(row.qty).toNumber();
+        return {
+          product: { id: row.id, name: row.name, sku: row.sku, unitOfMeasure: row.unit_of_measure },
+          category: { id: row.category_id, name: row.category_name },
+          reorderLevel: new Prisma.Decimal(row.reorder_level).toNumber(),
+          quantity,
+          status: quantity === 0 ? ('OUT_OF_STOCK' as const) : ('LOW_STOCK' as const),
+        };
+      }),
+      counted?.total ?? 0,
+      query.page,
+      query.limit,
+    );
   }
 
   /** Recent operation lines across all four document types, newest first */
   async operations(query: OperationsQueryDto): Promise<Paginated<OperationRow>> {
-    const conditions: Prisma.Sql[] = [];
-    if (query.documentType) conditions.push(Prisma.sql`ops.document_type = ${query.documentType}`);
-    if (query.status) conditions.push(Prisma.sql`ops.status = ${query.status}::document_status`);
-    if (query.categoryId) conditions.push(Prisma.sql`ops.category_id = ${query.categoryId}::uuid`);
-    if (query.warehouseId) {
-      conditions.push(Prisma.sql`(ops.warehouse_id = ${query.warehouseId}::uuid OR ops.destination_warehouse_id = ${query.warehouseId}::uuid)`);
-    }
-    if (query.locationId) {
-      conditions.push(Prisma.sql`(ops.location_id = ${query.locationId}::uuid OR ops.destination_location_id = ${query.locationId}::uuid)`);
-    }
-    if (query.search) {
-      const like = `%${query.search}%`;
-      conditions.push(Prisma.sql`(ops.reference ILIKE ${like} OR ops.product_name ILIKE ${like} OR ops.sku ILIKE ${like})`);
-    }
-    const where = conditions.length ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
+    const like = query.search ? `%${query.search}%` : '';
+    const where = and([
+      query.documentType && Prisma.sql`ops.document_type = ${query.documentType}`,
+      query.status && Prisma.sql`ops.status = ${query.status}::document_status`,
+      query.categoryId && Prisma.sql`ops.category_id = ${query.categoryId}::uuid`,
+      query.warehouseId &&
+        Prisma.sql`(ops.warehouse_id = ${query.warehouseId}::uuid OR ops.destination_warehouse_id = ${query.warehouseId}::uuid)`,
+      query.locationId &&
+        Prisma.sql`(ops.location_id = ${query.locationId}::uuid OR ops.destination_location_id = ${query.locationId}::uuid)`,
+      ...dateConditions('ops.doc_date', query),
+      like && Prisma.sql`(ops.reference ILIKE ${like} OR ops.product_name ILIKE ${like} OR ops.sku ILIKE ${like})`,
+    ]);
 
     const ops = Prisma.sql`
       SELECT 'RECEIPT' AS document_type, r.id AS document_id, r.reference, r.status, r.receipt_date AS doc_date, r.created_at,
@@ -169,7 +261,7 @@ export class DashboardService {
         LEFT JOIN warehouses dw ON dw.id = o.destination_warehouse_id
         LEFT JOIN locations dl ON dl.id = o.destination_location_id
       ) ops
-      ${where}`;
+      WHERE ${where}`;
 
     const [rows, counted] = await Promise.all([
       this.prisma.$queryRaw<
@@ -221,4 +313,36 @@ export class DashboardService {
       query.limit,
     );
   }
+}
+
+/** Active products (optionally in one category) with stock summed over the warehouse / location scope */
+function scopedProducts(scope: StockScopeDto): Prisma.Sql {
+  const inScope = and([
+    scope.warehouseId && Prisma.sql`l.warehouse_id = ${scope.warehouseId}::uuid`,
+    scope.locationId && Prisma.sql`s.location_id = ${scope.locationId}::uuid`,
+  ]);
+  return Prisma.sql`
+    SELECT p.id, p.name, p.sku, p.unit_of_measure, p.reorder_level, p.category_id,
+           COALESCE(SUM(s.quantity) FILTER (WHERE ${inScope}), 0) AS qty
+    FROM products p
+    LEFT JOIN stock s ON s.product_id = p.id
+    LEFT JOIN locations l ON l.id = s.location_id
+    WHERE p.status = 'ACTIVE' ${scope.categoryId ? Prisma.sql`AND p.category_id = ${scope.categoryId}::uuid` : Prisma.empty}
+    GROUP BY p.id`;
+}
+
+function dateConditions(column: string, filters: { dateFrom?: string; dateTo?: string }): Condition[] {
+  const bounds = dateBounds(filters.dateFrom, filters.dateTo);
+  if (!bounds) return [];
+  const col = Prisma.raw(column);
+  return [
+    bounds.gte && Prisma.sql`${col} >= ${bounds.gte}`,
+    bounds.lt && Prisma.sql`${col} < ${bounds.lt}`,
+    bounds.lte && Prisma.sql`${col} <= ${bounds.lte}`,
+  ];
+}
+
+function and(conditions: Condition[]): Prisma.Sql {
+  const present = conditions.filter((c): c is Prisma.Sql => Boolean(c));
+  return present.length ? Prisma.join(present, ' AND ') : Prisma.sql`TRUE`;
 }

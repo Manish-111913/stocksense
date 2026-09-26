@@ -1,5 +1,7 @@
-import { type MouseEvent } from 'react'
+import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { getProductSummary } from '../../api/products.ts'
+import type { ProductSummary } from '../../api/types.ts'
 import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
 import { NAV_TABS, SEARCH_PATH, USER_PATH } from './data.ts'
@@ -10,11 +12,59 @@ const TAB = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:tex
 export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) {
   const { user, name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
+  const [summary, setSummary] = useState<ProductSummary | null>(null)
+  const [headerSearch, setHeaderSearch] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Live stock alert count for the bell dot
+  useEffect(() => {
+    let cancelled = false
+    getProductSummary()
+      .then((next) => !cancelled && setSummary(next))
+      .catch(() => !cancelled && setSummary(null))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // ⌘K / Ctrl+K focuses the header search
+  useEffect(() => {
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   function go(event: MouseEvent<HTMLAnchorElement>, to: string) {
     event.preventDefault()
     navigate(to)
   }
+
+  // User badge opens the profile page (mouse, Enter or Space)
+  function handleBadgeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      navigate(ROUTES.profile)
+    }
+  }
+
+  // Header search: Enter opens the products list filtered by the term (name / SKU)
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      const term = headerSearch.trim()
+      navigate(term ? `${ROUTES.products}?search=${encodeURIComponent(term)}` : ROUTES.products)
+    } else if (event.key === 'Escape') {
+      setHeaderSearch('')
+      event.currentTarget.blur()
+    }
+  }
+
+  // Bell dot only when there are real stock alerts (low or out of stock)
+  const stockAlerts = summary ? summary.lowStock + summary.outOfStock : 0
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -32,7 +82,7 @@ export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) 
             </div>
             <span className="font-bold text-slate-900 text-sm tracking-tight">StockSense</span>
             <span className="text-slate-300">—</span>
-            <span className="text-xs font-medium text-slate-500 hidden sm:inline">Account Profile &amp; Security Settings v2.4</span>
+            <span className="text-xs font-medium text-slate-500 hidden sm:inline">Account Profile &amp; Security Settings</span>
           </div>
         </div>
         {/* Global Search Bar */}
@@ -41,17 +91,18 @@ export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) 
             <div className="absolute left-3 text-slate-400 pointer-events-none flex items-center">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d={SEARCH_PATH} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
             </div>
-            <input className="w-full pl-9 pr-14 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-brand-600 focus:ring-1 focus:ring-brand-600 transition-all" placeholder="Search account, security, audit settings..." type="text" />
+            <input className="w-full pl-9 pr-14 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-brand-600 focus:ring-1 focus:ring-brand-600 transition-all" onChange={(e) => setHeaderSearch(e.target.value)} onKeyDown={handleSearchKeyDown} placeholder="Search products by name or SKU..." ref={searchInputRef} type="text" value={headerSearch} />
             <kbd className="absolute right-2 px-1.5 py-0.5 text-[10px] font-mono font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm">⌘K</kbd>
           </div>
         </div>
         {/* Right User Actions */}
         <div className="flex items-center gap-3">
-          <button aria-label="Notifications" className="relative p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors" type="button">
+          <button aria-label="Notifications" className="relative p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors" onClick={() => navigate(ROUTES.dashboard)} title={stockAlerts > 0 ? `${stockAlerts} stock ${stockAlerts === 1 ? 'alert' : 'alerts'} (low / out of stock)` : 'No stock alerts'} type="button">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
+            {stockAlerts > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />}
           </button>
           <div className="h-5 w-px bg-slate-200" />
-          <div className="flex items-center gap-2 pl-1">
+          <div className="flex items-center gap-2 pl-1 cursor-pointer rounded-lg hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600" onClick={() => navigate(ROUTES.profile)} onKeyDown={handleBadgeKeyDown} role="button" tabIndex={0} title="Profile">
             <div className="text-right hidden sm:block">
               <div className="text-xs font-semibold text-slate-900 leading-tight">{name}</div>
               <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{roleLabel}</div>

@@ -1,4 +1,4 @@
-import type { DashboardSummary, DocumentStatus, MovementType, OperationRow, ProductStockLevel } from '../../api/types.ts'
+import type { DashboardSummary, DocumentStatus, MovementType, OperationRow, StockAlert } from '../../api/types.ts'
 import { formatQty } from '../products/productsData.ts'
 import { receiptPath, ROUTES } from '../../routes.ts'
 
@@ -34,6 +34,7 @@ export const HEADER_NAV_LINKS: NavLinkItem[] = [
   { label: 'Deliveries', to: ROUTES.deliveries },
   { label: 'Transfers', to: ROUTES.transfers },
   { label: 'Adjustments', to: ROUTES.adjustments },
+  { label: 'Move History', to: ROUTES.moveHistory },
   { label: 'Warehouse', to: ROUTES.warehouse },
 ]
 
@@ -56,6 +57,7 @@ export const DOCK_ITEMS: DockItem[] = [
   },
   { label: 'Transfers', icon: 'sync_alt', to: ROUTES.transfers },
   { label: 'Adjustments', icon: 'tune', to: ROUTES.adjustments },
+  { label: 'Move History', icon: 'history', to: ROUTES.moveHistory },
   { label: 'Warehouse', icon: 'warehouse', to: ROUTES.warehouse },
 ]
 
@@ -85,7 +87,7 @@ export const KPI_FILTER_CARDS: KpiFilterCard[] = [
     icon: 'swap_horiz',
     iconBoxClassName: 'w-8 h-8 rounded-lg bg-tertiary-fixed flex items-center justify-center group-hover:bg-tertiary-container group-hover:text-on-tertiary transition-colors',
     iconClassName: 'material-symbols-outlined text-tertiary text-[20px]',
-    valueKey: 'scheduledTransfers',
+    valueKey: 'internalTransfersScheduled',
     caption: 'Scheduled moves',
   },
 ]
@@ -99,6 +101,32 @@ export const TYPE_FILTERS: { type: TypeFilter; label: string }[] = [
 ]
 
 export const STATUS_OPTIONS: DocumentStatus[] = ['DRAFT', 'WAITING', 'READY', 'DONE', 'CANCELED']
+
+export type DatePreset = '' | 'TODAY' | '7D' | '30D'
+
+export const DATE_OPTIONS: { value: DatePreset; label: string }[] = [
+  { value: '', label: 'All Time' },
+  { value: 'TODAY', label: 'Today' },
+  { value: '7D', label: 'Last 7 Days' },
+  { value: '30D', label: 'Last 30 Days' },
+]
+
+export interface DateRange {
+  dateFrom?: string
+  dateTo?: string
+}
+
+/** dateFrom / dateTo for a date preset, as the user's local-day boundaries (both undefined for "All Time") */
+export function dateRangeFor(preset: DatePreset): DateRange {
+  if (!preset) return {}
+  const from = new Date()
+  from.setHours(0, 0, 0, 0)
+  if (preset === '7D') from.setDate(from.getDate() - 6)
+  if (preset === '30D') from.setDate(from.getDate() - 29)
+  const to = new Date()
+  to.setHours(23, 59, 59, 999)
+  return { dateFrom: from.toISOString(), dateTo: to.toISOString() }
+}
 
 export const OPERATION_TYPE_LABEL: Record<MovementType, string> = {
   RECEIPT: 'Receipt',
@@ -170,10 +198,10 @@ export function operationsCsv(rows: OperationRow[]) {
   return [header.join(','), ...lines].join('\n')
 }
 
-/** Out-of-stock items first, then low stock */
-export interface StockAlert {
-  item: ProductStockLevel
-  isOut: boolean
+export type AlertTone = 'out' | 'low'
+
+export function alertTone(alert: StockAlert): AlertTone {
+  return alert.status === 'OUT_OF_STOCK' ? 'out' : 'low'
 }
 
 export const ALERT_STRIP = {

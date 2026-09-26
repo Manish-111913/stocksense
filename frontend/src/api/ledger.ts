@@ -11,16 +11,23 @@ export interface LedgerFilters {
   locationId?: string
   movementType?: MovementType
   direction?: LedgerDirection
+  referenceType?: MovementType
   /** The receipt / delivery / transfer / adjustment id */
   referenceId?: string
-  /** YYYY-MM-DD, inclusive */
+  /** User id */
+  performedBy?: string
+  /** Inclusive: YYYY-MM-DD (a whole UTC day) or a full ISO date-time (e.g. local midnight via toISOString) */
   dateFrom?: string
-  /** YYYY-MM-DD, inclusive */
+  /** Inclusive, same format as dateFrom */
   dateTo?: string
 }
 
-export function listLedger(filters: LedgerFilters & { page?: number; limit?: number } = {}) {
+export function listLedger(filters: LedgerFilters & { page?: number; limit?: number; sortOrder?: 'asc' | 'desc' } = {}) {
   return api<Paginated<LedgerEntry>>('GET', '/ledger', { query: { ...filters } })
+}
+
+export function getLedgerEntry(id: string) {
+  return api<LedgerEntry>('GET', `/ledger/${id}`)
 }
 
 export function getLedgerSummary(filters: LedgerFilters = {}) {

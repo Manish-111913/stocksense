@@ -4,7 +4,7 @@ import type { AuthUser } from '../auth/auth-user.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { AdjustmentsService } from './adjustments.service.js';
-import { AdjustmentFiltersDto, AdjustmentQueryDto, CreateAdjustmentDto, UpdateAdjustmentDto } from './dto/adjustment.dto.js';
+import { AdjustmentFiltersDto, AdjustmentQueryDto, CreateAdjustmentDto, RecountAdjustmentDto, UpdateAdjustmentDto } from './dto/adjustment.dto.js';
 
 @ApiTags('Inventory Adjustments')
 @ApiBearerAuth()
@@ -48,14 +48,14 @@ export class AdjustmentsController {
     return this.adjustments.update(id, dto, user.id);
   }
 
-  /** Re-read the recorded quantity from current stock (after STALE_STOCK) */
-  @Post(':id/refresh')
+  /** New physical count for a stale adjustment: stores it with a fresh recorded quantity + stock version */
+  @Post(':id/recount')
   @HttpCode(HttpStatus.OK)
-  refresh(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
-    return this.adjustments.refresh(id, user.id);
+  recount(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RecountAdjustmentDto, @CurrentUser() user: AuthUser) {
+    return this.adjustments.recount(id, dto, user.id);
   }
 
-  /** DRAFT → DONE: stock := physical count + ledger (409 STALE_STOCK if stock moved). Inventory managers only */
+  /** READY → DONE: stock := physical count + ledger (409 STOCK_CHANGED_SINCE_ADJUSTMENT if stock moved). Inventory managers only */
   @Roles('INVENTORY_MANAGER')
   @Post(':id/apply')
   @HttpCode(HttpStatus.OK)

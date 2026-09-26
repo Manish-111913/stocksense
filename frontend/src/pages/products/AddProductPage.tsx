@@ -57,6 +57,7 @@ export default function AddProductPage() {
   const categoriesState = categoriesSettled?.key === categoriesReload ? categoriesSettled.state : 'loading'
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryDescription, setNewCategoryDescription] = useState('')
   const [newCategoryError, setNewCategoryError] = useState<string | null>(null)
   const [isCreatingCategory, setIsCreatingCategory] = useState(false)
 
@@ -159,11 +160,13 @@ export default function AddProductPage() {
     setIsCreatingCategory(true)
     setNewCategoryError(null)
     try {
-      const created = await createCategory({ name: categoryName })
+      const description = newCategoryDescription.trim()
+      const created = await createCategory({ name: categoryName, ...(description ? { description } : {}) })
       setCategories((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setCategory(created.id)
       setCategoryError(null)
       setNewCategoryName('')
+      setNewCategoryDescription('')
       setShowNewCategory(false)
       showToast('Category created', `${created.name} is ready to use.`)
     } catch (err) {
@@ -444,6 +447,7 @@ export default function AddProductPage() {
                                 onClick={() => {
                                   setShowNewCategory(false)
                                   setNewCategoryName('')
+                                  setNewCategoryDescription('')
                                   setNewCategoryError(null)
                                 }}
                                 type="button"
@@ -452,6 +456,24 @@ export default function AddProductPage() {
                               </button>
                             )}
                           </div>
+                          <input
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                            id="newCategoryDescription"
+                            maxLength={500}
+                            onChange={(e) => {
+                              setNewCategoryDescription(e.target.value)
+                              setNewCategoryError(null)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                void handleCreateCategory()
+                              }
+                            }}
+                            placeholder="Description (optional)"
+                            type="text"
+                            value={newCategoryDescription}
+                          />
                           {newCategoryError && (
                             <p className="text-[11px] text-rose-500 flex items-center gap-1">
                               <span className="material-symbols-outlined text-[13px]">error</span> {newCategoryError}

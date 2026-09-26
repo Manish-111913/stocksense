@@ -470,7 +470,7 @@ function ProductDetail({ id }: { id: string }) {
         </div>
 
         {/* FULL-WIDTH BOTTOM SECTION: Recent Stock Movements (Stock Ledger) */}
-        <StockLedgerCard sku={product.sku} />
+        <StockLedgerCard productId={product.id} sku={product.sku} />
       </div>
     </main>
   )

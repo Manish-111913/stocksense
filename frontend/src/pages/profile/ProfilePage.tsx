@@ -20,6 +20,7 @@ import {
   MONITOR_PATH,
   NAME_MAX_LENGTH,
   NAME_MIN_LENGTH,
+  PASSWORD_MIN_LENGTH,
   PENCIL_PATH,
   PHONE_MAX_LENGTH,
   PHONE_PATTERN,
@@ -45,7 +46,7 @@ function errorMessage(err: unknown, fallback: string) {
 }
 
 export default function ProfilePage() {
-  useDocumentTitle('StockSense — Account Profile & Security Settings v2.4')
+  useDocumentTitle('StockSense — Account Profile & Security Settings')
   usePageChrome('bg-slate-100 text-slate-800 antialiased p-2 sm:p-4 md:p-6 min-h-screen flex flex-col justify-between select-none', 'ss-profile')
   const navigate = useNavigate()
   // Signed-in profile from the session store; refreshed from GET /users/me on mount (fetchMe updates the store)
@@ -186,11 +187,11 @@ export default function ProfilePage() {
           {/* Breadcrumbs & Operations Sub-Header */}
           <div className="mb-5">
             <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
-              <span className="hover:text-slate-800 cursor-pointer">Operations</span>
+              <span className="hover:text-slate-800 cursor-pointer" onClick={() => navigate(ROUTES.dashboard)}>Operations</span>
               <span className="text-slate-400">/</span>
               <span className="hover:text-slate-800 cursor-pointer">Settings</span>
               <span className="text-slate-400">/</span>
-              <span className="font-mono text-brand-600 font-semibold">/profile</span>
+              <span className="font-mono text-brand-600 font-semibold">{ROUTES.profile}</span>
             </div>
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
@@ -478,7 +479,7 @@ export default function ProfilePage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-slate-900">Password</span>
-                        <span className="font-mono text-[10px] text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">Min. 8 characters</span>
+                        <span className="font-mono text-[10px] text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">{`Min. ${PASSWORD_MIN_LENGTH} characters`}</span>
                       </div>
                       <div className="font-mono text-slate-500 tracking-widest mt-0.5">••••••••••••••••</div>
                     </div>

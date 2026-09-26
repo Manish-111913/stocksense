@@ -36,6 +36,9 @@ export interface TransferView {
   sourceLocation: Place;
   destinationWarehouse: Place;
   destinationLocation: Place;
+  /** Same route, grouped: { warehouse, location } for each side */
+  source: { warehouse: Place; location: Place };
+  destination: { warehouse: Place; location: Place };
   items: TransferItemView[];
   lineCount: number;
   totalQuantity: number;
@@ -233,10 +236,10 @@ export class TransfersService {
    * (StockService locks source + destination rows, refuses to overdraw the source, writes OUT + IN
    * ledger rows), then mark it DONE. Any failure rolls all of it back.
    */
-  async validate(id: string, userId: string): Promise<TransferView & { stockChanges: TransferStockChange[] }> {
+  async validate(id: string, userId: string): Promise<TransferView & { stockChanges: TransferStockChange[]; alreadyCompleted: boolean }> {
     const stockChanges = await this.prisma.$transaction(async (tx) => {
       const current = await lockTransfer(tx, id);
-      if (current.status === 'DONE') throw new ConflictException(`Transfer ${current.reference} has already been validated`);
+      if (current.status === 'DONE') return null;
       if (current.status !== 'READY') {
         throw new ConflictException(`Transfer ${current.reference} is ${current.status}. Only READY transfers can be validated.`);
       }
@@ -274,7 +277,8 @@ export class TransfersService {
       });
     });
 
-    return { ...(await this.findOne(id)), stockChanges };
+    // A repeated validate (retry / double click) is idempotent: nothing moves again
+    return { ...(await this.findOne(id)), stockChanges: stockChanges ?? [], alreadyCompleted: stockChanges === null };
   }
 
   // ---------------------------------------------------------------------------
@@ -293,7 +297,12 @@ export class TransfersService {
   /** Both warehouses/locations active, each location inside its warehouse, and source ≠ destination */
   private async assertRoute(db: Tx, sourceWarehouseId: string, sourceLocationId: string, destinationWarehouseId: string, destinationLocationId: string) {
     if (sourceLocationId === destinationLocationId) {
-      throw new BadRequestException('Source and destination locations must be different');
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'SOURCE_DESTINATION_SAME',
+        code: 'SOURCE_DESTINATION_SAME',
+        message: 'Source and destination locations must be different',
+      });
     }
     const [warehouses, locations] = await Promise.all([
       db.warehouse.findMany({ where: { id: { in: [sourceWarehouseId, destinationWarehouseId] } }, select: { id: true, name: true, status: true } }),
@@ -389,7 +398,9 @@ function buildWhere(filters: TransferFiltersDto): Prisma.InternalTransferWhereIn
 
   return {
     status: filters.status,
+    sourceWarehouseId: filters.sourceWarehouseId,
     sourceLocationId: filters.sourceLocationId,
+    destinationWarehouseId: filters.destinationWarehouseId,
     destinationLocationId: filters.destinationLocationId,
     items: filters.productId ? { some: { productId: filters.productId } } : undefined,
     transferDate: filters.dateFrom || filters.dateTo ? transferDate : undefined,
@@ -425,6 +436,8 @@ function toView(transfer: TransferWithRelations, stock: Map<string, number>): Tr
     sourceLocation: transfer.sourceLocation,
     destinationWarehouse: transfer.destinationWarehouse,
     destinationLocation: transfer.destinationLocation,
+    source: { warehouse: transfer.sourceWarehouse, location: transfer.sourceLocation },
+    destination: { warehouse: transfer.destinationWarehouse, location: transfer.destinationLocation },
     items,
     lineCount: items.length,
     totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),

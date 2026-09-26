@@ -479,7 +479,7 @@ export function DeliveryDetailView({ id, onBack, onEdit }: DeliveryDetailViewPro
             <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-2">
               <div className="text-slate-400 flex justify-between">
                 <span>TRANSACTION TYPE:</span>
-                <span className="text-indigo-400 font-bold">STOCK.DECREMENT</span>
+                <span className="text-indigo-400 font-bold">DELIVERY / OUT</span>
               </div>
               {current.items.map((item, index) => (
                 <div className={index === 0 ? 'flex justify-between gap-2 border-t border-slate-800 pt-1 text-rose-300' : 'flex justify-between gap-2 text-rose-300'} key={item.id}>

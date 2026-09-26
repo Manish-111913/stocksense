@@ -36,10 +36,10 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true)
 
     try {
-      await requestPasswordReset(emailVal)
+      const { expiresInSeconds, resendCooldownSeconds } = await requestPasswordReset(emailVal)
       setRegisteredEmail(emailVal)
       setResetToken(null)
-      navigate(ROUTES.verifyOtp)
+      navigate(ROUTES.verifyOtp, { state: { expiresInSeconds, resendCooldownSeconds } })
     } catch (err) {
       setFieldError('forgotEmail', err instanceof ApiError ? err.message : 'Unable to send the OTP. Please try again.')
       setIsSubmitting(false)

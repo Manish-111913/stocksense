@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import type { Paginated, RecordStatus, Warehouse, WarehouseLocation, WarehouseSummary } from '../../api/types.ts'
 import { getWarehouse, getWarehouseSummary, listWarehouses, setLocationStatus, setWarehouseStatus } from '../../api/warehouses.ts'
 import { useCurrentUser } from '../../auth/useAuth.ts'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
 import { usePageChrome } from '../../hooks/usePageChrome.ts'
+import { ROUTES } from '../../routes.ts'
 import { useDebouncedValue } from '../products/productsData.ts'
 import { downloadNetworkCsv, errorMessage, PAGE_SIZE, plural, type ToastTone } from './data.ts'
 import { InspectorDrawer } from './InspectorDrawer.tsx'
@@ -45,8 +47,9 @@ function pageWindow(page: number, totalPages: number) {
 }
 
 export default function WarehousePage() {
-  useDocumentTitle('StockSense — Warehouse Management & Locations v2.4')
+  useDocumentTitle('StockSense — Warehouse Management & Locations')
   usePageChrome('bg-slate-100/80 text-slate-900 p-2 sm:p-4 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white', 'ss-ledger')
+  const navigate = useNavigate()
   const isManager = useCurrentUser()?.role === 'INVENTORY_MANAGER'
 
   const [search, setSearch] = useState('')
@@ -436,11 +439,11 @@ export default function WarehousePage() {
         {/* Breadcrumbs & Operations Sub-Header */}
         <div className="mb-5">
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
-            <span className="hover:text-slate-800 cursor-pointer">Operations</span>
+            <span className="hover:text-slate-800 cursor-pointer" onClick={() => navigate(ROUTES.dashboard)}>Operations</span>
             <span className="text-slate-400">/</span>
-            <span className="hover:text-slate-800 cursor-pointer">Warehouses</span>
+            <span className="hover:text-slate-800 cursor-pointer" onClick={clearFilters}>Warehouses</span>
             <span className="text-slate-400">/</span>
-            <span className="font-mono text-indigo-600 font-semibold">/warehouses</span>
+            <span className="font-mono text-indigo-600 font-semibold">{ROUTES.warehouse}</span>
           </div>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>

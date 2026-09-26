@@ -1,23 +1,76 @@
+import { useState } from 'react'
 import type { Adjustment } from '../../../api/types.ts'
 import { formatQty } from '../../products/productsData.ts'
-import { differenceTextClass, signedQty } from '../data.ts'
+import { differenceTextClass, physicalCountError, signedQty } from '../data.ts'
 
 interface ApplyModalProps {
   target: Adjustment
   error: string | null
-  /** Apply failed with STALE_STOCK, or the draft is already stale */
+  /** Apply failed with STOCK_CHANGED_SINCE_ADJUSTMENT, the adjustment is already stale, or a recount was asked for */
   isStale: boolean
+  /** Inventory managers only; staff can still recount */
+  canApply: boolean
   isPosting: boolean
-  isRefreshing: boolean
+  isRecounting: boolean
   onClose: () => void
   onConfirm: () => void
-  onRefresh: () => void
+  onRecount: (physicalQuantity: number) => void
 }
 
-// Apply confirmation: DRAFT → DONE sets stock to the physical count and writes the ledger entry
-export function ApplyModal({ target, error, isStale, isPosting, isRefreshing, onClose, onConfirm, onRefresh }: ApplyModalProps) {
+interface RecountFormProps {
+  disabled: boolean
+  isRecounting: boolean
+  unit: string
+  onRecount: (physicalQuantity: number) => void
+}
+
+// New physical count for a stale adjustment (the old count may predate newer stock movements)
+function RecountForm({ disabled, isRecounting, unit, onRecount }: RecountFormProps) {
+  const [value, setValue] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const fieldError = physicalCountError(value)
+
+  function submit() {
+    setSubmitted(true)
+    if (fieldError) return
+    onRecount(Number(value.trim()))
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[10px] font-bold uppercase tracking-wider text-amber-800" htmlFor="recountPhysical">
+        New physical count * {unit && <span className="normal-case">({unit})</span>}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          className="flex-1 min-w-0 bg-white border border-amber-300 text-slate-800 text-xs px-3 py-1.5 rounded-lg focus:outline-none focus:border-indigo-500 font-mono font-medium"
+          disabled={disabled}
+          id="recountPhysical"
+          min={0}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit()
+          }}
+          placeholder="Counted quantity"
+          step="any"
+          type="number"
+          value={value}
+        />
+        <button className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 text-[11px] font-semibold shadow-xs flex items-center gap-1 transition-colors disabled:opacity-50 flex-shrink-0" disabled={disabled} onClick={submit} type="button">
+          <span className={isRecounting ? 'material-symbols-outlined text-[14px] animate-spin' : 'material-symbols-outlined text-[14px]'}>{isRecounting ? 'progress_activity' : 'fact_check'}</span>
+          {isRecounting ? 'Saving...' : 'Save Recount'}
+        </button>
+      </div>
+      {submitted && fieldError && <p className="text-[11px] text-rose-600">{fieldError}</p>}
+    </div>
+  )
+}
+
+// Apply confirmation: READY → DONE sets stock to the physical count and writes the ledger entry.
+// A stale adjustment must be recounted here first.
+export function ApplyModal({ target, error, isStale, canApply, isPosting, isRecounting, onClose, onConfirm, onRecount }: ApplyModalProps) {
   const unit = target.product.unitOfMeasure
-  const isBusy = isPosting || isRefreshing
+  const isBusy = isPosting || isRecounting
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4" id="applyAdjustmentModal">
@@ -28,9 +81,9 @@ export function ApplyModal({ target, error, isStale, isPosting, isRefreshing, on
             <span className="material-symbols-outlined text-[22px]">verified</span>
           </div>
           <div className="flex-1">
-            <h3 className="font-bold text-sm text-slate-900">Apply Inventory Adjustment?</h3>
+            <h3 className="font-bold text-sm text-slate-900">{canApply ? 'Apply Inventory Adjustment?' : 'Recount Inventory Adjustment'}</h3>
             <p className="text-[11px] text-slate-500 mt-0.5" id="valRefTitle">
-              Reference: {target.reference} · Writes one stock ledger entry
+              Reference: {target.reference} · {target.difference === 0 ? 'Count matches stock, no ledger entry' : 'Writes one stock ledger entry'}
             </p>
           </div>
           <button className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-50" disabled={isBusy} onClick={onClose} type="button">
@@ -88,15 +141,14 @@ export function ApplyModal({ target, error, isStale, isPosting, isRefreshing, on
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex flex-col gap-2">
               <span className="flex items-start gap-1.5">
                 <span className="material-symbols-outlined text-[16px] text-amber-600">warning</span>
-                <span>{error ?? `Stock at this location moved since the count was recorded (now ${formatQty(target.currentQuantity)} ${unit}). Refresh the recorded quantity before applying.`}</span>
+                <span>
+                  Stock changed since this count was recorded — now {formatQty(target.currentQuantity)} {unit}. Recount the location and enter the new physical quantity.
+                </span>
               </span>
-              <button className="self-start px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 text-[11px] font-semibold shadow-xs flex items-center gap-1 transition-colors disabled:opacity-50" disabled={isBusy} onClick={onRefresh} type="button">
-                <span className={isRefreshing ? 'material-symbols-outlined text-[14px] animate-spin' : 'material-symbols-outlined text-[14px]'}>{isRefreshing ? 'progress_activity' : 'refresh'}</span>
-                Refresh recorded quantity
-              </button>
+              <RecountForm disabled={isBusy} isRecounting={isRecounting} key={target.updatedAt} onRecount={onRecount} unit={unit} />
             </div>
           )}
-          {error && !isStale && (
+          {error && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] flex items-center gap-2">
               <span className="material-symbols-outlined text-[16px] text-rose-600">error</span>
               <span>{error}</span>
@@ -108,10 +160,12 @@ export function ApplyModal({ target, error, isStale, isPosting, isRefreshing, on
           <button className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-semibold shadow-xs transition-colors disabled:opacity-50" disabled={isBusy} onClick={onClose} type="button">
             Cancel
           </button>
-          <button className="px-5 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-xs flex items-center gap-1.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled={isBusy || isStale} onClick={onConfirm} type="button">
-            <span className={isPosting ? 'material-symbols-outlined text-[15px] animate-spin' : 'material-symbols-outlined text-[15px]'}>{isPosting ? 'progress_activity' : 'verified'}</span>
-            <span>{isPosting ? 'Applying...' : 'Apply Adjustment'}</span>
-          </button>
+          {canApply && (
+            <button className="px-5 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-xs flex items-center gap-1.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled={isBusy || isStale} onClick={onConfirm} type="button">
+              <span className={isPosting ? 'material-symbols-outlined text-[15px] animate-spin' : 'material-symbols-outlined text-[15px]'}>{isPosting ? 'progress_activity' : 'verified'}</span>
+              <span>{isPosting ? 'Applying...' : 'Apply Adjustment'}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

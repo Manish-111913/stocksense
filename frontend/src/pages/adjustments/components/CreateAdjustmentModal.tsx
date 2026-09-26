@@ -15,7 +15,7 @@ const LABEL_CLASS = 'block text-[11px] font-semibold text-slate-600 mb-1'
 const FIELD_ERROR = 'text-[11px] text-rose-600 mt-1'
 
 interface CreateAdjustmentModalProps {
-  /** Edit this DRAFT; omitted to create a new adjustment */
+  /** Edit this open (READY) adjustment; omitted to create a new one */
   adjustment?: Adjustment | null
   /** Inventory managers can save and apply in one step */
   canApply: boolean
@@ -24,7 +24,7 @@ interface CreateAdjustmentModalProps {
   onSaved: (adjustment: Adjustment, applied: boolean, applyError: string | null) => void
 }
 
-// Create / edit a DRAFT adjustment. Remounts, and so resets, on every open.
+// Create (READY) / edit an open adjustment. Remounts, and so resets, on every open.
 export function CreateAdjustmentModal({ adjustment, canApply, onClose, onSaved }: CreateAdjustmentModalProps) {
   const editing = adjustment ?? null
   const presetReason = editing && REASON_PRESETS.includes(editing.reason)
@@ -46,7 +46,7 @@ export function CreateAdjustmentModal({ adjustment, canApply, onClose, onSaved }
   const [notes, setNotes] = useState(editing?.notes ?? '')
 
   const [submitted, setSubmitted] = useState(false)
-  const [saving, setSaving] = useState<'draft' | 'apply' | null>(null)
+  const [saving, setSaving] = useState<'save' | 'apply' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Active products (server search)
@@ -95,7 +95,7 @@ export function CreateAdjustmentModal({ adjustment, canApply, onClose, onSaved }
     }
   }, [warehouseId])
 
-  // Unchanged product + location on an existing draft: the backend keeps its recorded quantity
+  // Unchanged product + location on an existing adjustment: the backend keeps its recorded quantity
   const keepsRecorded = Boolean(editing && product?.id === editing.product.id && locationId === editing.location.id)
   const stockKey = product && locationId && !keepsRecorded ? `${product.id}|${locationId}` : ''
 
@@ -153,7 +153,7 @@ export function CreateAdjustmentModal({ adjustment, canApply, onClose, onSaved }
   async function save(andApply: boolean) {
     setSubmitted(true)
     if (!isValid || !product || saving) return
-    setSaving(andApply ? 'apply' : 'draft')
+    setSaving(andApply ? 'apply' : 'save')
     setError(null)
     const input = { productId: product.id, warehouseId, locationId, physicalQuantity: physicalValue, reason }
     let saved: Adjustment
@@ -195,7 +195,7 @@ export function CreateAdjustmentModal({ adjustment, canApply, onClose, onSaved }
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-sm text-slate-900">{editing ? 'Edit Inventory Adjustment' : 'New Inventory Adjustment'}</h3>
-              <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200/60">{editing ? editing.reference : '/adjustments/new'}</span>
+              <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200/60">{editing ? editing.reference : 'New'}</span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">Record a physical count. The system quantity is read from current stock; applying sets stock to your count.</p>
           </div>
@@ -277,7 +277,7 @@ export function CreateAdjustmentModal({ adjustment, canApply, onClose, onSaved }
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-800">Physical Count</span>
-              <span className="font-mono text-[11px] text-slate-400">{keepsRecorded ? 'Recorded when drafted' : 'Live stock check'}</span>
+              <span className="font-mono text-[11px] text-slate-400">{keepsRecorded ? 'Recorded when counted' : 'Live stock check'}</span>
             </div>
             <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
@@ -354,7 +354,7 @@ export function CreateAdjustmentModal({ adjustment, canApply, onClose, onSaved }
           </button>
           <div className="flex items-center gap-2">
             <button className={canApply ? 'px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-semibold shadow-xs transition-all disabled:opacity-50' : 'px-5 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-xs flex items-center gap-1.5 active:scale-[0.98] transition-all disabled:opacity-50'} disabled={saving !== null} onClick={() => void save(false)} type="button">
-              {saving === 'draft' ? 'Saving...' : editing ? 'Save Changes' : 'Save Draft'}
+              {saving === 'save' ? 'Saving...' : editing ? 'Save Changes' : 'Save'}
             </button>
             {canApply && (
               <button className="px-5 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-xs flex items-center gap-1.5 active:scale-[0.98] transition-all disabled:opacity-50" disabled={saving !== null} onClick={() => void save(true)} type="button">

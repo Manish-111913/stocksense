@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Adjustment } from '../../../api/types.ts'
 import { formatQty } from '../../products/productsData.ts'
-import { differenceTextClass, formatDateTime, signedQty } from '../data.ts'
+import { differenceTextClass, formatDateTime, isOpenStatus, signedQty, statusLabel } from '../data.ts'
 import { StaleBadge, StatusBadge } from './AdjustmentRow.tsx'
 
 const PANEL_CLASS = 'fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 transform transition-transform duration-300 flex flex-col'
@@ -17,7 +17,8 @@ interface InspectorDrawerProps {
   onApply: (adjustment: Adjustment) => void
   onEdit: (adjustment: Adjustment) => void
   onCancel: (adjustment: Adjustment) => void
-  onRefresh: (adjustment: Adjustment) => void
+  /** Stale: ask for a new physical count */
+  onRecount: (adjustment: Adjustment) => void
 }
 
 function StatusBanner({ adjustment: a }: { adjustment: Adjustment }) {
@@ -28,7 +29,9 @@ function StatusBanner({ adjustment: a }: { adjustment: Adjustment }) {
           <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Current State</div>
           <div className="text-base font-bold text-emerald-950 mt-0.5">Applied</div>
           <p className="text-[11px] text-emerald-800 mt-0.5">
-            Stock set to {formatQty(a.physicalQuantity)} {a.product.unitOfMeasure} and posted to the stock ledger.
+            {a.difference === 0
+              ? `Count matched stock (${formatQty(a.physicalQuantity)} ${a.product.unitOfMeasure}), so no ledger entry was needed.`
+              : `Stock set to ${formatQty(a.physicalQuantity)} ${a.product.unitOfMeasure} and posted to the stock ledger.`}
           </p>
         </div>
         <span className="material-symbols-outlined text-3xl text-emerald-600">task_alt</span>
@@ -52,9 +55,9 @@ function StatusBanner({ adjustment: a }: { adjustment: Adjustment }) {
       <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50 border border-amber-200/70 text-amber-900">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Current State</div>
-          <div className="text-base font-bold text-amber-950 mt-0.5">Draft · Stale</div>
+          <div className="text-base font-bold text-amber-950 mt-0.5">{statusLabel(a.status)} · Stale</div>
           <p className="text-[11px] text-amber-800 mt-0.5">
-            Stock moved since the count was recorded (now {formatQty(a.currentQuantity)} {a.product.unitOfMeasure}). Refresh before applying.
+            Stock moved since the count was recorded (now {formatQty(a.currentQuantity)} {a.product.unitOfMeasure}). Recount the location before applying.
           </p>
         </div>
         <span className="material-symbols-outlined text-3xl text-amber-600">warning</span>
@@ -65,7 +68,7 @@ function StatusBanner({ adjustment: a }: { adjustment: Adjustment }) {
     <div className="flex items-center justify-between p-4 rounded-xl bg-indigo-50 border border-indigo-200/70 text-indigo-900">
       <div>
         <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Current State</div>
-        <div className="text-base font-bold text-indigo-950 mt-0.5">Draft</div>
+        <div className="text-base font-bold text-indigo-950 mt-0.5">{statusLabel(a.status)}</div>
         <p className="text-[11px] text-indigo-800 mt-0.5">Counted, not applied yet. Stock is unchanged until an inventory manager applies it.</p>
       </div>
       <span className="material-symbols-outlined text-3xl text-indigo-600">edit_note</span>
@@ -83,9 +86,9 @@ function DetailLine({ label, children }: { label: string; children: ReactNode })
 }
 
 // Slide-over detail drawer (stays mounted so it can slide in and out)
-export function InspectorDrawer({ isOpen, adjustment: a, canApply, isBusy, onClose, onApply, onEdit, onCancel, onRefresh }: InspectorDrawerProps) {
+export function InspectorDrawer({ isOpen, adjustment: a, canApply, isBusy, onClose, onApply, onEdit, onCancel, onRecount }: InspectorDrawerProps) {
   const unit = a?.product.unitOfMeasure ?? ''
-  const isDraft = a?.status === 'DRAFT'
+  const isOpenAdjustment = a ? isOpenStatus(a.status) : false
 
   return (
     <div className={isOpen ? PANEL_CLASS : PANEL_CLOSED_CLASS} id="detailPanel">
@@ -96,7 +99,7 @@ export function InspectorDrawer({ isOpen, adjustment: a, canApply, isBusy, onClo
             {a?.reference ?? ''}
           </span>
           {a && <StatusBadge status={a.status} />}
-          {a && isDraft && a.isStale && <StaleBadge />}
+          {a && isOpenAdjustment && a.isStale && <StaleBadge />}
         </div>
         <button className="w-8 h-8 rounded-lg hover:bg-slate-200/60 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors" onClick={onClose} type="button">
           <span className="material-symbols-outlined text-[18px]">close</span>
@@ -164,7 +167,7 @@ export function InspectorDrawer({ isOpen, adjustment: a, canApply, isBusy, onClo
                 <span className="text-slate-900 font-semibold">{a.appliedBy?.fullName ?? '—'}</span>
               </div>
               <DetailLine label="Applied at:">{a.appliedAt ? formatDateTime(a.appliedAt) : '—'}</DetailLine>
-              {a.status === 'DONE' && <DetailLine label="Ledger entry:">{a.difference >= 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT'}</DetailLine>}
+              {a.status === 'DONE' && <DetailLine label="Ledger entry:">{a.difference > 0 ? 'ADJUSTMENT_IN' : a.difference < 0 ? 'ADJUSTMENT_OUT' : 'None (no change)'}</DetailLine>}
             </div>
           </div>
         </div>
@@ -174,7 +177,7 @@ export function InspectorDrawer({ isOpen, adjustment: a, canApply, isBusy, onClo
         <button className="flex-1 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-semibold shadow-xs transition-colors text-center" onClick={onClose} type="button">
           Close
         </button>
-        {a && isDraft && (
+        {a && isOpenAdjustment && (
           <>
             <button className="py-2 px-3 rounded-xl bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 text-xs font-semibold shadow-xs transition-colors disabled:opacity-50" disabled={isBusy} onClick={() => onCancel(a)} type="button">
               Cancel
@@ -183,9 +186,9 @@ export function InspectorDrawer({ isOpen, adjustment: a, canApply, isBusy, onClo
               Edit
             </button>
             {a.isStale ? (
-              <button className="flex-1 py-2 rounded-xl bg-amber-500 text-white hover:bg-amber-600 text-xs font-semibold shadow-xs transition-all text-center flex items-center justify-center gap-1.5 disabled:opacity-50" disabled={isBusy} onClick={() => onRefresh(a)} type="button">
-                <span className="material-symbols-outlined text-[15px]">refresh</span>
-                <span>Refresh Recorded</span>
+              <button className="flex-1 py-2 rounded-xl bg-amber-500 text-white hover:bg-amber-600 text-xs font-semibold shadow-xs transition-all text-center flex items-center justify-center gap-1.5 disabled:opacity-50" disabled={isBusy} onClick={() => onRecount(a)} title="Recount physical quantity" type="button">
+                <span className="material-symbols-outlined text-[15px]">fact_check</span>
+                <span>Recount</span>
               </button>
             ) : (
               canApply && (

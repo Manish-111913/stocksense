@@ -9,10 +9,9 @@ import { SubmitButton } from '../components/SubmitButton.tsx'
 import { useDocumentTitle } from '../hooks/useDocumentTitle.ts'
 import { useFieldErrors } from '../hooks/useFieldErrors.ts'
 import { inputClassName } from '../lib/inputClassName.ts'
-import { placeholderLinkProps } from '../lib/placeholderLink.ts'
 import { validateEmail } from '../lib/validation.ts'
 
-type SignupField = 'signupName' | 'signupEmail' | 'signupPassword' | 'signupConfirmPassword' | 'signupTerms'
+type SignupField = 'signupName' | 'signupEmail' | 'signupPassword' | 'signupConfirmPassword'
 
 export default function SignUpPage() {
   useDocumentTitle('StockSense — Create Account')
@@ -22,7 +21,6 @@ export default function SignUpPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [termsAccepted, setTermsAccepted] = useState(false)
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -71,11 +69,6 @@ export default function SignUpPage() {
       hasError = true
     } else if (confirmPassword !== password) {
       setFieldError('signupConfirmPassword', 'Passwords do not match')
-      hasError = true
-    }
-
-    if (!termsAccepted) {
-      setFieldError('signupTerms', 'Please accept the terms to continue')
       hasError = true
     }
 
@@ -210,30 +203,6 @@ export default function SignUpPage() {
           {/* Match Indicator */}
           {passwordsMatch && <PasswordMatchHint id="passwordMatchSuccess" />}
           <FieldError id="signupConfirmPasswordError" message={errors.signupConfirmPassword} />
-        </div>
-
-        {/* Terms & Agreement Checkbox */}
-        <div className="pt-1">
-          <label className="flex items-start gap-2.5 cursor-pointer select-none">
-            <input
-              checked={termsAccepted}
-              className="mt-0.5 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 focus:ring-offset-0 cursor-pointer"
-              id="signupTerms"
-              name="terms"
-              onChange={(e) => {
-                setTermsAccepted(e.target.checked)
-                clearFieldError('signupTerms')
-              }}
-              type="checkbox"
-            />
-            <span className="text-xs text-slate-600 leading-snug">
-              I agree to the{' '}
-              <a className="text-blue-600 hover:text-blue-700 underline font-medium" {...placeholderLinkProps}>Terms of Service</a>
-              {' '}and{' '}
-              <a className="text-blue-600 hover:text-blue-700 underline font-medium" {...placeholderLinkProps}>Privacy Policy</a>
-            </span>
-          </label>
-          <FieldError id="signupTermsError" message={errors.signupTerms} />
         </div>
 
         {/* Primary Submit Action Button */}

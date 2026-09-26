@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../../../api/client.ts'
 import { confirmDelivery, createCustomer, createDelivery, getDelivery, listCustomers, updateDelivery } from '../../../api/deliveries.ts'
@@ -17,6 +17,11 @@ const QTY_INPUT = 'w-24 text-right py-1 px-2 border border-slate-200 rounded-lg 
 /** Classes added to an over-limit / invalid qty input */
 const QTY_INPUT_OVER = 'border-rose-500 bg-rose-50/40'
 const GUIDE_LINK = 'font-semibold text-indigo-600 hover:text-indigo-800 underline'
+const NEW_CUSTOMER_INPUT = 'w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+const NEW_CUSTOMER_INPUT_INVALID = 'w-full px-3 py-1.5 text-xs bg-white border border-rose-400 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100'
+/** Same rules the API enforces for customer email / phone (customer.dto.ts) */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PHONE_PATTERN = /^[0-9+()\-\s]*$/
 
 type ListState = 'loading' | 'ready' | 'error'
 type BusyAction = 'save' | 'confirm'
@@ -67,6 +72,9 @@ export function NewDeliveryView({ id, onClose, onOpenDetail }: NewDeliveryViewPr
   const [showNewCustomer, setShowNewCustomer] = useState(false)
   const [newCustomerName, setNewCustomerName] = useState('')
   const [newCustomerCode, setNewCustomerCode] = useState('')
+  const [newCustomerEmail, setNewCustomerEmail] = useState('')
+  const [newCustomerPhone, setNewCustomerPhone] = useState('')
+  const [newCustomerFieldErrors, setNewCustomerFieldErrors] = useState<{ email?: string; phone?: string }>({})
   const [newCustomerError, setNewCustomerError] = useState<string | null>(null)
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
 
@@ -372,21 +380,38 @@ export function NewDeliveryView({ id, onClose, onOpenDetail }: NewDeliveryViewPr
     )
   }
 
+  function resetNewCustomer() {
+    setNewCustomerName('')
+    setNewCustomerCode('')
+    setNewCustomerEmail('')
+    setNewCustomerPhone('')
+    setNewCustomerFieldErrors({})
+    setNewCustomerError(null)
+  }
+
   async function handleCreateCustomer() {
+    if (isCreatingCustomer) return
     const name = newCustomerName.trim()
     const code = newCustomerCode.trim()
+    const email = newCustomerEmail.trim()
+    const phone = newCustomerPhone.trim()
     if (!name) {
       setNewCustomerError('Customer name is required.')
       return
     }
+    const fieldErrors = {
+      ...(email && !EMAIL_PATTERN.test(email) ? { email: 'Enter a valid email address.' } : {}),
+      ...(phone && !PHONE_PATTERN.test(phone) ? { phone: 'Phone may only contain digits, spaces and + ( ) -' } : {}),
+    }
+    setNewCustomerFieldErrors(fieldErrors)
+    if (fieldErrors.email || fieldErrors.phone) return
     setIsCreatingCustomer(true)
     setNewCustomerError(null)
     try {
-      const created = await createCustomer({ name, ...(code ? { code } : {}) })
+      const created = await createCustomer({ name, ...(code ? { code } : {}), ...(email ? { email } : {}), ...(phone ? { phone } : {}) })
       setCustomers((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       updateForm({ customerId: created.id })
-      setNewCustomerName('')
-      setNewCustomerCode('')
+      resetNewCustomer()
       setShowNewCustomer(false)
       showToast('Customer Created', `${created.name} is ready to use.`)
     } catch (err) {
@@ -394,6 +419,13 @@ export function NewDeliveryView({ id, onClose, onOpenDetail }: NewDeliveryViewPr
     } finally {
       setIsCreatingCustomer(false)
     }
+  }
+
+  /** Enter in any "new customer" input creates the customer */
+  function submitCustomerOnEnter(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    void handleCreateCustomer()
   }
 
   function addProductLine(event: ChangeEvent<HTMLSelectElement>) {
@@ -535,19 +567,14 @@ export function NewDeliveryView({ id, onClose, onOpenDetail }: NewDeliveryViewPr
                           Customer name
                         </label>
                         <input
-                          className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                          className={NEW_CUSTOMER_INPUT}
                           id="newCustomerName"
                           maxLength={200}
                           onChange={(e) => {
                             setNewCustomerName(e.target.value)
                             setNewCustomerError(null)
                           }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              void handleCreateCustomer()
-                            }
-                          }}
+                          onKeyDown={submitCustomerOnEnter}
                           placeholder="Enter customer name"
                           type="text"
                           value={newCustomerName}
@@ -565,16 +592,63 @@ export function NewDeliveryView({ id, onClose, onOpenDetail }: NewDeliveryViewPr
                             setNewCustomerCode(e.target.value)
                             setNewCustomerError(null)
                           }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              void handleCreateCustomer()
-                            }
-                          }}
+                          onKeyDown={submitCustomerOnEnter}
                           placeholder="Code"
                           type="text"
                           value={newCustomerCode}
                         />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1" htmlFor="newCustomerEmail">
+                          Email <span className="font-normal text-slate-400">(optional)</span>
+                        </label>
+                        <input
+                          aria-invalid={newCustomerFieldErrors.email ? true : undefined}
+                          className={newCustomerFieldErrors.email ? NEW_CUSTOMER_INPUT_INVALID : NEW_CUSTOMER_INPUT}
+                          id="newCustomerEmail"
+                          maxLength={255}
+                          onChange={(e) => {
+                            setNewCustomerEmail(e.target.value)
+                            setNewCustomerFieldErrors((prev) => ({ ...prev, email: undefined }))
+                            setNewCustomerError(null)
+                          }}
+                          onKeyDown={submitCustomerOnEnter}
+                          placeholder="customer@example.com"
+                          type="email"
+                          value={newCustomerEmail}
+                        />
+                        {newCustomerFieldErrors.email && (
+                          <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px]">error</span> {newCustomerFieldErrors.email}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1" htmlFor="newCustomerPhone">
+                          Phone <span className="font-normal text-slate-400">(optional)</span>
+                        </label>
+                        <input
+                          aria-invalid={newCustomerFieldErrors.phone ? true : undefined}
+                          className={newCustomerFieldErrors.phone ? NEW_CUSTOMER_INPUT_INVALID : NEW_CUSTOMER_INPUT}
+                          id="newCustomerPhone"
+                          maxLength={30}
+                          onChange={(e) => {
+                            setNewCustomerPhone(e.target.value)
+                            setNewCustomerFieldErrors((prev) => ({ ...prev, phone: undefined }))
+                            setNewCustomerError(null)
+                          }}
+                          onKeyDown={submitCustomerOnEnter}
+                          placeholder="+1 (555) 010-0000"
+                          type="tel"
+                          value={newCustomerPhone}
+                        />
+                        {newCustomerFieldErrors.phone && (
+                          <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px]">error</span> {newCustomerFieldErrors.phone}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center justify-end gap-2">
@@ -583,9 +657,7 @@ export function NewDeliveryView({ id, onClose, onOpenDetail }: NewDeliveryViewPr
                           className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-[11px] font-semibold"
                           onClick={() => {
                             setShowNewCustomer(false)
-                            setNewCustomerName('')
-                            setNewCustomerCode('')
-                            setNewCustomerError(null)
+                            resetNewCustomer()
                           }}
                           type="button"
                         >

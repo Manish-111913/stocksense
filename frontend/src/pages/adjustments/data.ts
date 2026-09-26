@@ -1,18 +1,23 @@
 import { ApiError } from '../../api/client.ts'
-import type { Adjustment, DocumentStatus } from '../../api/types.ts'
+import { DOCUMENT_STATUS_LABEL, type Adjustment, type DocumentStatus } from '../../api/types.ts'
 import { formatQty } from '../products/productsData.ts'
 
-/** Adjustments only use DRAFT → DONE, or CANCELED */
-export type AdjustmentStatus = Extract<DocumentStatus, 'DRAFT' | 'DONE' | 'CANCELED'>
+/** Adjustments are created READY, then applied (DONE) or CANCELED */
+export type AdjustmentStatus = Extract<DocumentStatus, 'READY' | 'DONE' | 'CANCELED'>
 
 export const STATUS_LABELS: Record<AdjustmentStatus, string> = {
-  DRAFT: 'Draft',
+  READY: 'Ready',
   DONE: 'Applied',
   CANCELED: 'Canceled',
 }
 
 export function statusLabel(status: DocumentStatus) {
-  return STATUS_LABELS[status as AdjustmentStatus] ?? status
+  return STATUS_LABELS[status as AdjustmentStatus] ?? DOCUMENT_STATUS_LABEL[status] ?? status
+}
+
+/** Not applied or canceled yet: editable, cancelable, appliable and can go stale (legacy DRAFT / WAITING included) */
+export function isOpenStatus(status: DocumentStatus) {
+  return status === 'DRAFT' || status === 'WAITING' || status === 'READY'
 }
 
 export interface SelectOption {
@@ -22,7 +27,7 @@ export interface SelectOption {
 
 export const STATUS_OPTIONS: SelectOption[] = [
   { value: '', label: 'All Statuses' },
-  { value: 'DRAFT', label: STATUS_LABELS.DRAFT },
+  { value: 'READY', label: STATUS_LABELS.READY },
   { value: 'DONE', label: STATUS_LABELS.DONE },
   { value: 'CANCELED', label: STATUS_LABELS.CANCELED },
 ]
@@ -83,9 +88,23 @@ export function differenceTextClass(difference: number) {
   return 'text-slate-700'
 }
 
-/** Apply failed because stock moved since the draft was recorded (409 STALE_STOCK) */
+/** Apply failed because stock moved after the count was recorded (409 STOCK_CHANGED_SINCE_ADJUSTMENT; STALE_STOCK is the legacy code) */
 export function isStaleStockError(err: unknown) {
-  return err instanceof ApiError && err.code === 'STALE_STOCK'
+  return err instanceof ApiError && (err.code === 'STOCK_CHANGED_SINCE_ADJUSTMENT' || err.code === 'STALE_STOCK')
+}
+
+/** Physical count rule shared with the backend: ≥ 0 and at most 3 decimal places. Returns an error message or null */
+export function physicalCountError(value: string) {
+  const trimmed = value.trim()
+  const n = trimmed === '' ? NaN : Number(trimmed)
+  if (!Number.isFinite(n) || n < 0) return 'Enter the new physical count (0 or more).'
+  if (Math.abs(Math.round(n * 1000) - n * 1000) > 1e-6) return 'Use at most 3 decimal places.'
+  return null
+}
+
+export function recountToastSubtitle(a: Adjustment) {
+  const unit = a.product.unitOfMeasure
+  return `${a.reference} recorded ${formatQty(a.recordedQuantity)} ${unit}, counted ${formatQty(a.physicalQuantity)} ${unit} (${signedQty(a.difference)} ${unit}).`
 }
 
 export function applyToastSubtitle(a: Adjustment) {
@@ -113,12 +132,12 @@ const KPI_LABEL = 'text-[11px] font-semibold uppercase tracking-wider'
 
 export const KPI_CARDS: KpiCard[] = [
   {
-    key: 'DRAFT',
-    label: 'Draft',
+    key: 'READY',
+    label: 'Ready',
     labelClass: `${KPI_LABEL} text-amber-700`,
-    badge: 'To Apply',
+    badge: 'Pending',
     badgeClass: 'px-1.5 py-0.2 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60',
-    unit: 'drafts',
+    unit: 'to apply',
     caption: 'Counted, stock not changed yet',
   },
   {

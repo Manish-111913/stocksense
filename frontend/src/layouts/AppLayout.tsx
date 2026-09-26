@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { PillActionsContext, type PillActionRegistry } from '../context/pillActions.ts'
 import { ToastContext } from '../context/toast.ts'
@@ -8,12 +8,12 @@ import type { ProductSummary } from '../api/types.ts'
 import { useUserBadge } from '../auth/useAuth.ts'
 import { ROUTES } from '../routes.ts'
 
-type ModuleKey = 'dashboard' | 'products' | 'receipts' | 'deliveries' | 'transfers' | 'adjustments' | 'warehouse' | 'directory'
+type ModuleKey = 'dashboard' | 'products' | 'receipts' | 'deliveries' | 'transfers' | 'adjustments' | 'moveHistory' | 'warehouse'
 
 /**
  * The original screens come in two shell revisions:
  * - classic: Products / Receipts / Deliveries
- * - v2: Transfers / Adjustments (extra Directory tab, transfer counts, "(Active)" dock tooltips, other toast copy)
+ * - v2: Transfers / Adjustments ("(Active)" dock tooltips, other toast motion)
  */
 type ShellVariant = 'classic' | 'v2'
 
@@ -21,8 +21,7 @@ interface ModuleItem {
   key: ModuleKey
   label: string
   icon: string
-  /** Modules without a screen yet show a toast instead of navigating */
-  to?: string
+  to: string
 }
 
 const MODULES: ModuleItem[] = [
@@ -32,10 +31,9 @@ const MODULES: ModuleItem[] = [
   { key: 'deliveries', label: 'Deliveries', icon: 'local_shipping', to: ROUTES.deliveries },
   { key: 'transfers', label: 'Transfers', icon: 'sync_alt', to: ROUTES.transfers },
   { key: 'adjustments', label: 'Adjustments', icon: 'tune', to: ROUTES.adjustments },
+  { key: 'moveHistory', label: 'Move History', icon: 'history', to: ROUTES.moveHistory },
   { key: 'warehouse', label: 'Warehouse', icon: 'warehouse', to: ROUTES.warehouse },
 ]
-
-const DIRECTORY_TAB: ModuleItem = { key: 'directory', label: 'Directory', icon: 'folder_shared' }
 
 interface PillItem {
   icon: string
@@ -143,9 +141,9 @@ function shellConfigFor(pathname: string): ShellConfig {
     case ROUTES.deliveries:
       return { title: 'StockSense — Delivery Orders', module: 'deliveries', variant: 'classic', pill: DELIVERIES_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-300', toastMs: 3500 }
     case ROUTES.transfers:
-      return { title: 'StockSense — Internal Transfers', module: 'transfers', variant: 'v2', titleIcon: 'swap_horiz', searchPlaceholder: 'Search catalog, SKUs, or transfer batch...', pill: TRANSFERS_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-200', toastMs: 3500 }
+      return { title: 'StockSense — Internal Transfers', module: 'transfers', variant: 'v2', titleIcon: 'swap_horiz', searchPlaceholder: 'Search catalog by product name or SKU...', pill: TRANSFERS_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-200', toastMs: 3500 }
     case ROUTES.adjustments:
-      return { title: 'StockSense — Inventory Adjustments', module: 'adjustments', variant: 'v2', titleIcon: 'tune', searchPlaceholder: 'Search catalog, SKUs, or transfer batch...', pill: ADJUSTMENTS_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-200', toastMs: 3500 }
+      return { title: 'StockSense — Inventory Adjustments', module: 'adjustments', variant: 'v2', titleIcon: 'tune', searchPlaceholder: 'Search catalog by product name or SKU...', pill: ADJUSTMENTS_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-200', toastMs: 3500 }
     case ROUTES.products:
     case ROUTES.productNew:
       return { title: 'StockSense — Products Management', module: 'products', variant: 'classic', pill: PRODUCTS_PILL, bodyPadding: 'pb-28', ...CLASSIC_TOAST }
@@ -184,7 +182,7 @@ export default function AppLayout() {
   usePageChrome(`bg-slate-100/90 text-slate-800 antialiased font-sans min-h-screen p-3 sm:p-5 lg:p-7 flex flex-col items-center justify-start selection:bg-indigo-500 selection:text-white ${shell.bodyPadding}`, 'ss-app')
   const { name, initial, roleLabel } = useUserBadge()
 
-  // Live catalog figures for the footer (refreshed on every screen change)
+  // Live catalog figures for the footer and the alerts bell (refreshed on every screen change)
   const [summary, setSummary] = useState<ProductSummary | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -210,19 +208,10 @@ export default function AppLayout() {
     [toastMs],
   )
 
-  const showModuleAlert = useCallback(
-    (moduleName: string) =>
-      variant === 'v2'
-        ? showToast(`Navigated to ${moduleName}`, `Switched workspace view to ${moduleName}.`)
-        : showToast(`Workspace: ${moduleName}`, `Switching operational view to ${moduleName}.`),
-    [showToast, variant],
-  )
-
-  const toastContext = useMemo(() => ({ showToast, showModuleAlert }), [showToast, showModuleAlert])
+  const toastContext = useMemo(() => ({ showToast }), [showToast])
 
   function openModule(item: ModuleItem) {
-    if (item.to) navigate(item.to)
-    else showModuleAlert(item.label)
+    navigate(item.to)
   }
 
   function handleNavClick(event: MouseEvent<HTMLAnchorElement>, item: ModuleItem) {
@@ -230,12 +219,45 @@ export default function AppLayout() {
     openModule(item)
   }
 
+  // Header user badge opens the profile page (mouse, Enter or Space)
+  function handleBadgeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      navigate(ROUTES.profile)
+    }
+  }
+
   function handlePillClick(item: PillItem) {
     if (item.to) navigate(item.to)
     else if (item.action) pillActions.get(item.action)?.()
   }
 
-  const navItems = variant === 'v2' ? [...MODULES, DIRECTORY_TAB] : MODULES
+  // Header search: Enter opens the products list filtered by the term (name / SKU)
+  const [headerSearch, setHeaderSearch] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      const term = headerSearch.trim()
+      navigate(term ? `${ROUTES.products}?search=${encodeURIComponent(term)}` : ROUTES.products)
+    } else if (event.key === 'Escape') {
+      setHeaderSearch('')
+      event.currentTarget.blur()
+    }
+  }
+  // ⌘K / Ctrl+K focuses the header search
+  useEffect(() => {
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  // Bell dot only when there are real stock alerts (low or out of stock)
+  const stockAlerts = summary ? summary.lowStock + summary.outOfStock : 0
 
   return (
     <ToastContext value={toastContext}>
@@ -257,23 +279,22 @@ export default function AppLayout() {
                   <span className="material-symbols-outlined text-[13px]">{shell.titleIcon ?? 'layers'}</span>
                 </div>
                 <span>{shell.title}</span>
-                <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-200/70 text-slate-600 tracking-wide uppercase">v2.4</span>
               </div>
             </div>
             <div className="flex-1 max-w-md hidden md:block">
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-2.5 top-1.5 text-slate-400 text-[16px]">search</span>
-                <input className="w-full pl-8 pr-12 py-1 text-xs bg-white border border-slate-200/90 rounded-md text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" placeholder={shell.searchPlaceholder ?? 'Search inventory, SKU, or batch ID...'} type="text" />
+                <input className="w-full pl-8 pr-12 py-1 text-xs bg-white border border-slate-200/90 rounded-md text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" onChange={(e) => setHeaderSearch(e.target.value)} onKeyDown={handleSearchKeyDown} placeholder={shell.searchPlaceholder ?? 'Search products by name or SKU...'} ref={searchInputRef} type="text" value={headerSearch} />
                 <kbd className="absolute right-2 top-1 px-1.5 py-0.2 text-[10px] font-medium font-mono text-slate-400 bg-slate-100 rounded border border-slate-200">⌘K</kbd>
               </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-              <button className="relative p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors" title="Notifications">
+              <button className="relative p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors" onClick={() => navigate(ROUTES.dashboard)} title={!summary ? 'Stock alerts' : stockAlerts > 0 ? `${stockAlerts} stock ${stockAlerts === 1 ? 'alert' : 'alerts'} (low / out of stock)` : 'No stock alerts'} type="button">
                 <span className="material-symbols-outlined text-[18px]">notifications</span>
-                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-rose-500 ring-2 ring-white" />
+                {stockAlerts > 0 && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-rose-500 ring-2 ring-white" />}
               </button>
               <div className="h-4 w-[1px] bg-slate-200" />
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 cursor-pointer rounded-md hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500" onClick={() => navigate(ROUTES.profile)} onKeyDown={handleBadgeKeyDown} role="button" tabIndex={0} title="Profile">
                 <div className="w-6 h-6 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-[11px] font-bold text-indigo-700">{initial}</div>
                 <div className="hidden sm:flex flex-col text-left">
                   <span className="text-xs font-semibold text-slate-800 leading-tight">{name}</span>
@@ -286,7 +307,7 @@ export default function AppLayout() {
           {/* Workspace Sub-navigation Tabs */}
           <div className="w-full bg-white border-b border-slate-200/70 px-4 sm:px-6 py-2 flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
             <nav className="flex items-center gap-1 flex-shrink-0">
-              {navItems.map((item) => {
+              {MODULES.map((item) => {
                 const isActive = item.key === shell.module
                 return (
                   <a className={isActive ? NAV_ACTIVE : NAV_INACTIVE} href="#" key={item.key} onClick={(e) => handleNavClick(e, item)}>
@@ -342,7 +363,7 @@ export default function AppLayout() {
         {/* Pinned Bottom System Telemetry Strip */}
         <footer className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 border-t border-slate-200/80 px-4 sm:px-6 py-2 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2 backdrop-blur-xs">
           <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className={summary ? 'w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse' : 'w-1.5 h-1.5 rounded-full bg-slate-300'} title={summary ? 'Connected' : 'Not connected'} />
             <span>StockSense</span>
             <span className="text-slate-300">·</span>
             <span id="telemetrySkus">Active SKUs: {summary ? summary.totalProducts : '—'}</span>

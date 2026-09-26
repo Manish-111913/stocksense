@@ -1,7 +1,7 @@
 import { Controller, Get, Header, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiProduces, ApiTags } from '@nestjs/swagger';
-import { PaginationQueryDto } from '../common/pagination.js';
-import { LedgerFiltersDto, LedgerQueryDto, LedgerService } from './ledger.service.js';
+import { LedgerFiltersDto, LedgerQueryDto } from './dto/ledger-query.dto.js';
+import { LedgerService } from './ledger.service.js';
 
 // Read-only by design: there are no POST / PATCH / DELETE routes for the ledger
 @ApiTags('Stock Ledger')
@@ -10,7 +10,7 @@ import { LedgerFiltersDto, LedgerQueryDto, LedgerService } from './ledger.servic
 export class LedgerController {
   constructor(private readonly ledger: LedgerService) {}
 
-  /** Newest first; filter by product, warehouse, location, movement type, direction, document or date */
+  /** Newest first (sortOrder=asc for oldest first); filter by product, warehouse, location, type, direction, document, user or date */
   @Get()
   list(@Query() query: LedgerQueryDto) {
     return this.ledger.list(query);
@@ -30,19 +30,31 @@ export class LedgerController {
     return this.ledger.exportCsv(filters);
   }
 
+  /** Every movement of one product (all locations) */
   @Get('product/:productId')
-  byProduct(@Param('productId', ParseUUIDPipe) productId: string, @Query() page: PaginationQueryDto) {
-    return this.ledger.list({ ...page, productId });
+  byProduct(@Param('productId', ParseUUIDPipe) productId: string, @Query() query: LedgerQueryDto) {
+    return this.ledger.list({ ...query, productId });
   }
 
+  /** Everything that happened at one location */
   @Get('location/:locationId')
-  byLocation(@Param('locationId', ParseUUIDPipe) locationId: string, @Query() page: PaginationQueryDto) {
-    return this.ledger.list({ ...page, locationId });
+  byLocation(@Param('locationId', ParseUUIDPipe) locationId: string, @Query() query: LedgerQueryDto) {
+    return this.ledger.list({ ...query, locationId });
   }
 
-  /** All entries written by one receipt / delivery / transfer / adjustment */
+  @Get('warehouse/:warehouseId')
+  byWarehouse(@Param('warehouseId', ParseUUIDPipe) warehouseId: string, @Query() query: LedgerQueryDto) {
+    return this.ledger.list({ ...query, warehouseId });
+  }
+
+  /** All entries written by one receipt / delivery / transfer / adjustment (a transfer has an OUT and an IN) */
   @Get('reference/:referenceId')
-  byReference(@Param('referenceId', ParseUUIDPipe) referenceId: string, @Query() page: PaginationQueryDto) {
-    return this.ledger.list({ ...page, referenceId });
+  byReference(@Param('referenceId', ParseUUIDPipe) referenceId: string, @Query() query: LedgerQueryDto) {
+    return this.ledger.list({ ...query, referenceId });
+  }
+
+  @Get(':id')
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.ledger.findOne(id);
   }
 }

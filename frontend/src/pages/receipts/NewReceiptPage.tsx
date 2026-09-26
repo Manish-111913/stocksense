@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type KeyboardEvent } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../../api/client.ts'
 import { listProducts } from '../../api/products.ts'
@@ -26,6 +26,11 @@ const SECONDARY_BTN = 'px-3.5 py-2 bg-white hover:bg-slate-50 border border-slat
 const SAVE_BTN = 'px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all disabled:opacity-60'
 const PRIMARY_BTN = 'px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all active:scale-[0.98] disabled:opacity-70'
 const GUIDE_LINK = 'font-semibold text-indigo-600 hover:text-indigo-800 underline'
+const NEW_SUPPLIER_INPUT = 'w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+const NEW_SUPPLIER_INPUT_INVALID = 'w-full px-3 py-1.5 text-xs bg-white border border-rose-400 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100'
+/** Same rules the API enforces for supplier email / phone (supplier.dto.ts) */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PHONE_PATTERN = /^[0-9+()\-\s]*$/
 
 const STATUS_BADGES: Record<DocumentStatus, { className: string; dot: string }> = {
   DRAFT: {
@@ -127,6 +132,9 @@ function ReceiptScreen({ id }: { id: string | null }) {
   const [showNewSupplier, setShowNewSupplier] = useState(false)
   const [newSupplierName, setNewSupplierName] = useState('')
   const [newSupplierCode, setNewSupplierCode] = useState('')
+  const [newSupplierEmail, setNewSupplierEmail] = useState('')
+  const [newSupplierPhone, setNewSupplierPhone] = useState('')
+  const [newSupplierFieldErrors, setNewSupplierFieldErrors] = useState<{ email?: string; phone?: string }>({})
   const [newSupplierError, setNewSupplierError] = useState<string | null>(null)
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false)
 
@@ -430,21 +438,38 @@ function ReceiptScreen({ id }: { id: string | null }) {
     )
   }
 
+  function resetNewSupplier() {
+    setNewSupplierName('')
+    setNewSupplierCode('')
+    setNewSupplierEmail('')
+    setNewSupplierPhone('')
+    setNewSupplierFieldErrors({})
+    setNewSupplierError(null)
+  }
+
   async function handleCreateSupplier() {
+    if (isCreatingSupplier) return
     const name = newSupplierName.trim()
     const code = newSupplierCode.trim()
+    const email = newSupplierEmail.trim()
+    const phone = newSupplierPhone.trim()
     if (!name) {
       setNewSupplierError('Supplier name is required.')
       return
     }
+    const fieldErrors = {
+      ...(email && !EMAIL_PATTERN.test(email) ? { email: 'Enter a valid email address.' } : {}),
+      ...(phone && !PHONE_PATTERN.test(phone) ? { phone: 'Phone may only contain digits, spaces and + ( ) -' } : {}),
+    }
+    setNewSupplierFieldErrors(fieldErrors)
+    if (fieldErrors.email || fieldErrors.phone) return
     setIsCreatingSupplier(true)
     setNewSupplierError(null)
     try {
-      const created = await createSupplier({ name, ...(code ? { code } : {}) })
+      const created = await createSupplier({ name, ...(code ? { code } : {}), ...(email ? { email } : {}), ...(phone ? { phone } : {}) })
       setSuppliers((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       updateForm({ supplierId: created.id })
-      setNewSupplierName('')
-      setNewSupplierCode('')
+      resetNewSupplier()
       setShowNewSupplier(false)
       showToast('Supplier created', `${created.name} is ready to use.`)
     } catch (err) {
@@ -452,6 +477,13 @@ function ReceiptScreen({ id }: { id: string | null }) {
     } finally {
       setIsCreatingSupplier(false)
     }
+  }
+
+  /** Enter in any "new supplier" input creates the supplier */
+  function submitSupplierOnEnter(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    void handleCreateSupplier()
   }
 
   function addSelectedProductFromCatalog(productId: string) {
@@ -629,10 +661,6 @@ function ReceiptScreen({ id }: { id: string | null }) {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>System Auto-Balance Guard Active</span>
-          </div>
         </div>
 
         {/* Success Banner for Validated State */}
@@ -762,19 +790,14 @@ function ReceiptScreen({ id }: { id: string | null }) {
                               Supplier name
                             </label>
                             <input
-                              className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                              className={NEW_SUPPLIER_INPUT}
                               id="newSupplierName"
                               maxLength={200}
                               onChange={(e) => {
                                 setNewSupplierName(e.target.value)
                                 setNewSupplierError(null)
                               }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  void handleCreateSupplier()
-                                }
-                              }}
+                              onKeyDown={submitSupplierOnEnter}
                               placeholder="Enter supplier name"
                               type="text"
                               value={newSupplierName}
@@ -792,16 +815,63 @@ function ReceiptScreen({ id }: { id: string | null }) {
                                 setNewSupplierCode(e.target.value)
                                 setNewSupplierError(null)
                               }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  void handleCreateSupplier()
-                                }
-                              }}
+                              onKeyDown={submitSupplierOnEnter}
                               placeholder="Code"
                               type="text"
                               value={newSupplierCode}
                             />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1" htmlFor="newSupplierEmail">
+                              Email <span className="font-normal text-slate-400">(optional)</span>
+                            </label>
+                            <input
+                              aria-invalid={newSupplierFieldErrors.email ? true : undefined}
+                              className={newSupplierFieldErrors.email ? NEW_SUPPLIER_INPUT_INVALID : NEW_SUPPLIER_INPUT}
+                              id="newSupplierEmail"
+                              maxLength={255}
+                              onChange={(e) => {
+                                setNewSupplierEmail(e.target.value)
+                                setNewSupplierFieldErrors((prev) => ({ ...prev, email: undefined }))
+                                setNewSupplierError(null)
+                              }}
+                              onKeyDown={submitSupplierOnEnter}
+                              placeholder="supplier@example.com"
+                              type="email"
+                              value={newSupplierEmail}
+                            />
+                            {newSupplierFieldErrors.email && (
+                              <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[13px]">error</span> {newSupplierFieldErrors.email}
+                              </p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1" htmlFor="newSupplierPhone">
+                              Phone <span className="font-normal text-slate-400">(optional)</span>
+                            </label>
+                            <input
+                              aria-invalid={newSupplierFieldErrors.phone ? true : undefined}
+                              className={newSupplierFieldErrors.phone ? NEW_SUPPLIER_INPUT_INVALID : NEW_SUPPLIER_INPUT}
+                              id="newSupplierPhone"
+                              maxLength={30}
+                              onChange={(e) => {
+                                setNewSupplierPhone(e.target.value)
+                                setNewSupplierFieldErrors((prev) => ({ ...prev, phone: undefined }))
+                                setNewSupplierError(null)
+                              }}
+                              onKeyDown={submitSupplierOnEnter}
+                              placeholder="+1 (555) 010-0000"
+                              type="tel"
+                              value={newSupplierPhone}
+                            />
+                            {newSupplierFieldErrors.phone && (
+                              <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[13px]">error</span> {newSupplierFieldErrors.phone}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center justify-end gap-2">
@@ -810,9 +880,7 @@ function ReceiptScreen({ id }: { id: string | null }) {
                               className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-[11px] font-semibold"
                               onClick={() => {
                                 setShowNewSupplier(false)
-                                setNewSupplierName('')
-                                setNewSupplierCode('')
-                                setNewSupplierError(null)
+                                resetNewSupplier()
                               }}
                               type="button"
                             >

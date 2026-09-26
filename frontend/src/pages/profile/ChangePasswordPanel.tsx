@@ -3,7 +3,7 @@ import { changePassword } from '../../api/auth.ts'
 import { ApiError } from '../../api/client.ts'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from './data.ts'
 
-// Change-password accordion: same strength rule as Sign Up (8+ characters), checked again by the backend
+// Change-password accordion: same strength rule as Sign Up (PASSWORD_MIN_LENGTH+ characters), checked again by the backend
 const RULE_MET = 'flex items-center space-x-1.5 text-emerald-600 font-medium'
 const RULE_UNMET = 'flex items-center space-x-1.5 text-slate-400'
 const DOT_MET = 'w-1.5 h-1.5 rounded-full bg-emerald-500'
@@ -38,7 +38,7 @@ export function ChangePasswordPanel({ isOpen, onClose, onChanged }: ChangePasswo
 
   const next = values.newPassword
   const rules = [
-    { id: 'ruleLength', label: 'At least 8 characters', met: hasLength(next) },
+    { id: 'ruleLength', label: `At least ${PASSWORD_MIN_LENGTH} characters`, met: hasLength(next) },
     { id: 'ruleDifferent', label: 'Different from current password', met: next.length > 0 && next !== values.currentPassword },
     { id: 'ruleMatch', label: 'Confirmation matches', met: next.length > 0 && next === values.confirmPassword },
   ]
@@ -63,7 +63,7 @@ export function ChangePasswordPanel({ isOpen, onClose, onChanged }: ChangePasswo
       return
     }
     if (next.length < PASSWORD_MIN_LENGTH) {
-      setError('Password must be at least 8 characters.')
+      setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`)
       return
     }
     if (next.length > PASSWORD_MAX_LENGTH) {

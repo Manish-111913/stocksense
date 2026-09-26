@@ -1,56 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { IntersectionType } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { paginated, PaginationQueryDto, skipTake, type Paginated } from '../common/pagination.js';
-import { Trim } from '../common/transforms.js';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { dateBounds } from '../common/date-range.js';
+import { paginated, skipTake, type Paginated } from '../common/pagination.js';
 import { InventoryOperation, LedgerDirection, Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-
-export class LedgerFiltersDto {
-  /** Matches product name, SKU or the document reference */
-  @IsOptional()
-  @Trim()
-  @IsString()
-  @MaxLength(200)
-  search?: string;
-
-  @IsOptional()
-  @IsUUID()
-  productId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  warehouseId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  locationId?: string;
-
-  @IsOptional()
-  @IsEnum(InventoryOperation)
-  movementType?: InventoryOperation;
-
-  @IsOptional()
-  @IsEnum(LedgerDirection)
-  direction?: LedgerDirection;
-
-  /** The receipt / delivery / transfer / adjustment id */
-  @IsOptional()
-  @IsUUID()
-  referenceId?: string;
-
-  /** @example "2026-09-01" */
-  @IsOptional()
-  @IsDateString()
-  dateFrom?: string;
-
-  /** Inclusive, whole day @example "2026-09-30" */
-  @IsOptional()
-  @IsDateString()
-  dateTo?: string;
-}
-
-export class LedgerQueryDto extends IntersectionType(PaginationQueryDto, LedgerFiltersDto) {}
+import type { LedgerFiltersDto, LedgerQueryDto } from './dto/ledger-query.dto.js';
 
 type Place = { id: string; name: string; code: string };
 
@@ -70,8 +23,12 @@ export interface LedgerEntryView {
   location: Place;
   sourceLocation: Place | null;
   destinationLocation: Place | null;
-  reference: { type: InventoryOperation; id: string; code: string };
-  performedBy: { id: string; fullName: string };
+  /** The document that caused the movement */
+  referenceType: InventoryOperation;
+  referenceId: string;
+  /** Document reference, e.g. WH/IN/000001 */
+  reference: string;
+  performedBy: { id: string; name: string };
 }
 
 export interface LedgerSummary {
@@ -92,23 +49,33 @@ const ENTRY_INCLUDE = {
 
 type EntryWithRelations = Prisma.StockLedgerGetPayload<{ include: typeof ENTRY_INCLUDE }>;
 
-/** Read-only view of the append-only stock ledger (rows are only ever written by StockService) */
+/**
+ * Read-only view of the append-only stock ledger. Rows are only written by StockService inside the same
+ * transaction as the stock change; there is no HTTP route that creates, edits or deletes them.
+ */
 @Injectable()
 export class LedgerService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(query: LedgerQueryDto): Promise<Paginated<LedgerEntryView>> {
     const where = buildWhere(query);
+    const order = query.sortOrder ?? 'desc';
     const [entries, total] = await Promise.all([
       this.prisma.stockLedger.findMany({
         where,
         include: ENTRY_INCLUDE,
-        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        orderBy: [{ createdAt: order }, { id: 'asc' }],
         ...skipTake(query),
       }),
       this.prisma.stockLedger.count({ where }),
     ]);
     return paginated(entries.map(toView), total, query.page, query.limit);
+  }
+
+  async findOne(id: string): Promise<LedgerEntryView> {
+    const entry = await this.prisma.stockLedger.findUnique({ where: { id }, include: ENTRY_INCLUDE });
+    if (!entry) throw new NotFoundException('Ledger entry not found');
+    return toView(entry);
   }
 
   /** Movement counts (overall and per type) for the same filters */
@@ -133,7 +100,7 @@ export class LedgerService {
     const header = ['Timestamp', 'Reference', 'Movement', 'Direction', 'SKU', 'Product', 'Warehouse', 'Location', 'Quantity', 'Before', 'After', 'UOM', 'Performed By'];
     const rows = entries.map(toView).map((e) => [
       e.createdAt.toISOString(),
-      e.reference.code,
+      e.reference,
       e.movementType,
       e.direction,
       e.product.sku,
@@ -144,26 +111,23 @@ export class LedgerService {
       e.quantityBefore === null ? '' : String(e.quantityBefore),
       e.quantityAfter === null ? '' : String(e.quantityAfter),
       e.product.unitOfMeasure,
-      e.performedBy.fullName,
+      e.performedBy.name,
     ]);
     return [header, ...rows].map((cells) => cells.map(csvCell).join(',')).join('\r\n');
   }
 }
 
 function buildWhere(filters: LedgerFiltersDto): Prisma.StockLedgerWhereInput {
-  const createdAt: Prisma.DateTimeFilter = {};
-  if (filters.dateFrom) createdAt.gte = new Date(`${filters.dateFrom.slice(0, 10)}T00:00:00.000Z`);
-  if (filters.dateTo) {
-    createdAt.lt = new Date(new Date(`${filters.dateTo.slice(0, 10)}T00:00:00.000Z`).getTime() + 86_400_000);
-  }
   return {
     productId: filters.productId,
     warehouseId: filters.warehouseId,
     locationId: filters.locationId,
     movementType: filters.movementType,
     direction: filters.direction,
+    referenceType: filters.referenceType,
     referenceId: filters.referenceId,
-    createdAt: filters.dateFrom || filters.dateTo ? createdAt : undefined,
+    performedBy: filters.performedBy,
+    createdAt: dateBounds(filters.dateFrom, filters.dateTo),
     OR: filters.search
       ? [
           { referenceCode: { contains: filters.search, mode: 'insensitive' } },
@@ -191,8 +155,10 @@ function toView(entry: EntryWithRelations): LedgerEntryView {
     location: entry.location,
     sourceLocation: entry.sourceLocation,
     destinationLocation: entry.destinationLocation,
-    reference: { type: entry.referenceType, id: entry.referenceId, code: entry.referenceCode },
-    performedBy: entry.performedByUser,
+    referenceType: entry.referenceType,
+    referenceId: entry.referenceId,
+    reference: entry.referenceCode,
+    performedBy: { id: entry.performedByUser.id, name: entry.performedByUser.fullName },
   };
 }
 

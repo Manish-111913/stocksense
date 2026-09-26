@@ -1,5 +1,6 @@
 import { type MouseEvent } from 'react'
 import { DOCUMENT_STATUS_LABEL, type DocumentStatus, type Receipt } from '../../../api/types.ts'
+import { receiptPath } from '../../../routes.ts'
 import { formatReceiptDate, linesLabel, receiptProductsNote, receiptQuantityLabel, ROW_TONES } from './receiptsData.ts'
 
 function StatusBadge({ status }: { status: DocumentStatus }) {
@@ -119,7 +120,7 @@ export function ReceiptRow({ receipt, isBusy, onOpen, onConfirm, onMarkReady, on
   return (
     <tr className={tone.rowClass} data-status={receipt.status} onClick={() => onOpen(receipt)}>
       <td className="py-3.5 px-4">
-        <a className={tone.refLinkClass} href="#" onClick={handleRefClick}>
+        <a className={tone.refLinkClass} href={receiptPath(receipt.id)} onClick={handleRefClick}>
           <span className={tone.refIconClass}>
             <span className="material-symbols-outlined text-[14px]">{tone.refIcon}</span>
           </span>

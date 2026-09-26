@@ -402,8 +402,11 @@ export interface LedgerEntry {
   sourceLocation: LedgerPlace | null
   destinationLocation: LedgerPlace | null
   /** The receipt / delivery / transfer / adjustment that caused the movement */
-  reference: { type: MovementType; id: string; code: string }
-  performedBy: { id: string; fullName: string }
+  referenceType: MovementType
+  referenceId: string
+  /** Document reference, e.g. WH/IN/000001 */
+  reference: string
+  performedBy: { id: string; name: string }
 }
 
 export interface LedgerSummary {
@@ -411,19 +414,52 @@ export interface LedgerSummary {
   byMovementType: Record<MovementType, number>
 }
 
+/**
+ * Dashboard KPIs. Stock KPIs follow the warehouse / location / category filters; the pending-document
+ * KPIs follow warehouse / location / category / status / date. Document type only narrows the operations list.
+ */
 export interface DashboardSummary {
-  /** Active products with stock > 0 */
-  productsInStock: number
+  /** Distinct active products with stock > 0 (in the filtered scope) */
+  totalProductsInStock: number
+  /** Active products in the category filter */
   totalProducts: number
-  categories: number
-  warehouses: number
+  /** 0 < stock <= reorder level */
   lowStock: number
+  /** stock = 0 */
   outOfStock: number
-  /** DRAFT / WAITING / READY */
+  /** DRAFT / WAITING / READY (narrowed to the status filter when it is one of these) */
   pendingReceipts: number
   pendingDeliveries: number
-  scheduledTransfers: number
-  draftAdjustments: number
+  internalTransfersScheduled: number
+  pendingAdjustments: number
+  /** Active categories / warehouses (not filtered) */
+  categories: number
+  warehouses: number
+}
+
+export interface DashboardFilterValues {
+  documentType: MovementType | null
+  status: DocumentStatus | null
+  warehouseId: string | null
+  locationId: string | null
+  categoryId: string | null
+  dateFrom: string | null
+  dateTo: string | null
+}
+
+export interface DashboardResponse {
+  summary: DashboardSummary
+  /** The filters the backend applied (null = not set) */
+  filters: DashboardFilterValues
+}
+
+/** A low / out-of-stock product; quantity is summed over the filtered warehouse / location */
+export interface StockAlert {
+  product: { id: string; name: string; sku: string; unitOfMeasure: string }
+  category: { id: string; name: string }
+  reorderLevel: number
+  quantity: number
+  status: 'LOW_STOCK' | 'OUT_OF_STOCK'
 }
 
 /** One document line: a product on a receipt / delivery / transfer, or one adjustment */

@@ -4,11 +4,11 @@ import { receiptPath, ROUTES } from '../../routes.ts'
 
 export interface NavLink {
   label: string
-  to?: string
+  to: string
   active?: boolean
 }
 
-// Pinned sub-navigation tab bar (Directory has no module, keeps the original no-op)
+// Pinned sub-navigation tab bar (real modules only)
 export const NAV_LINKS: NavLink[] = [
   { label: 'Dashboard', to: ROUTES.dashboard },
   { label: 'Products', to: ROUTES.products },
@@ -18,7 +18,6 @@ export const NAV_LINKS: NavLink[] = [
   { label: 'Adjustments', to: ROUTES.adjustments },
   { label: 'Move History', to: ROUTES.moveHistory, active: true },
   { label: 'Warehouse', to: ROUTES.warehouse },
-  { label: 'Directory' },
 ]
 
 export interface DockItem {
@@ -88,20 +87,16 @@ export const DATE_OPTIONS: SelectOption[] = [
   { value: '30D', label: 'Last 30 Days' },
 ]
 
-/** Local calendar day as YYYY-MM-DD */
-function isoDay(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-}
-
-/** dateFrom / dateTo filters for a date preset (both undefined for "All Time") */
+/** dateFrom / dateTo for a date preset, as the user's local-day boundaries (both undefined for "All Time") */
 export function dateRangeFor(preset: DatePreset): { dateFrom?: string; dateTo?: string } {
   if (!preset) return {}
-  const today = new Date()
-  const from = new Date(today)
+  const from = new Date()
+  from.setHours(0, 0, 0, 0)
   if (preset === '7D') from.setDate(from.getDate() - 6)
   if (preset === '30D') from.setDate(from.getDate() - 29)
-  return { dateFrom: isoDay(from), dateTo: isoDay(today) }
+  const to = new Date()
+  to.setHours(23, 59, 59, 999)
+  return { dateFrom: from.toISOString(), dateTo: to.toISOString() }
 }
 
 export function formatDateTime(value: string) {
@@ -123,10 +118,10 @@ export function balanceChange(entry: LedgerEntry) {
 export const isOutgoing = (entry: LedgerEntry) => entry.signedQuantity < 0
 
 /** Where the source document lives: receipts have a detail page, the others their list */
-export function documentPath(reference: LedgerEntry['reference']) {
-  switch (reference.type) {
+export function documentPath(entry: LedgerEntry) {
+  switch (entry.referenceType) {
     case 'RECEIPT':
-      return receiptPath(reference.id)
+      return receiptPath(entry.referenceId)
     case 'DELIVERY':
       return ROUTES.deliveries
     case 'INTERNAL_TRANSFER':

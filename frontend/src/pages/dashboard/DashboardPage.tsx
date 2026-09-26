@@ -1,10 +1,9 @@
 import '../../styles/dashboard.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { getDashboardSummary, listOperations, type OperationFilters } from '../../api/dashboard.ts'
-import { listLowStock, listOutOfStock } from '../../api/inventory.ts'
+import { getDashboard, listOperations, listStockAlerts, type DashboardFilters, type OperationFilters } from '../../api/dashboard.ts'
 import { listCategories } from '../../api/products.ts'
-import { DOCUMENT_STATUS_LABEL, type Category, type DashboardSummary, type DocumentStatus, type OperationRow, type Paginated, type Warehouse } from '../../api/types.ts'
+import { DOCUMENT_STATUS_LABEL, type Category, type DashboardSummary, type DocumentStatus, type OperationRow, type Paginated, type StockAlert, type Warehouse } from '../../api/types.ts'
 import { listWarehouses } from '../../api/warehouses.ts'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
 import { usePageChrome } from '../../hooks/usePageChrome.ts'
@@ -18,6 +17,9 @@ import {
   ALERT_BADGE,
   ALERT_STOCK,
   ALERT_STRIP,
+  alertTone,
+  DATE_OPTIONS,
+  dateRangeFor,
   formatTimestamp,
   KPI_FILTER_CARDS,
   OPERATION_STATUS_CLASS,
@@ -31,7 +33,8 @@ import {
   QTY_NEGATIVE_CLASS,
   STATUS_OPTIONS,
   TYPE_FILTERS,
-  type StockAlert,
+  type DatePreset,
+  type DateRange,
   type TypeFilter,
 } from './data.ts'
 import { NewOperationModal } from './NewOperationModal.tsx'
@@ -69,6 +72,9 @@ export default function DashboardPage() {
   const [status, setStatus] = useState<DocumentStatus | ''>('')
   const [place, setPlace] = useState('')
   const [category, setCategory] = useState('')
+  const [datePreset, setDatePreset] = useState<DatePreset>('')
+  // Resolved when the preset is picked (and again on refresh, so "Today" follows the clock)
+  const [dateRange, setDateRange] = useState<DateRange>({})
   const [page, setPage] = useState(1)
   const [reloadKey, setReloadKey] = useState(0)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -78,7 +84,7 @@ export default function DashboardPage() {
   // Summary (KPI cards, dock badges, footer)
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
-  const [summaryKey, setSummaryKey] = useState<number | null>(null)
+  const [summaryKey, setSummaryKey] = useState<string | null>(null)
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const [syncedAt, setSyncedAt] = useState<Date | null>(null)
 
@@ -95,23 +101,28 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<StockAlert[] | null>(null)
   const [alertTotal, setAlertTotal] = useState(0)
   const [alertsError, setAlertsError] = useState<string | null>(null)
-  const [alertsKey, setAlertsKey] = useState<number | null>(null)
+  const [alertsKey, setAlertsKey] = useState<string | null>(null)
 
+  // Stock scope shared by the stock KPIs and the alert cards
+  const stockFilters = useMemo<Pick<DashboardFilters, 'warehouseId' | 'locationId' | 'categoryId'>>(() => ({ categoryId: category || undefined, ...placeFilter(place) }), [category, place])
+  // KPI filters: search and document type never change the counts
+  const kpiFilters = useMemo<DashboardFilters>(() => ({ ...stockFilters, status: status || undefined, ...dateRange }), [stockFilters, status, dateRange])
   const filters = useMemo<OperationFilters>(
     () => ({
+      ...kpiFilters,
       search: debouncedSearch || undefined,
       documentType: activeType === 'All' ? undefined : activeType,
-      status: status || undefined,
-      categoryId: category || undefined,
-      ...placeFilter(place),
     }),
-    [debouncedSearch, activeType, status, category, place],
+    [kpiFilters, debouncedSearch, activeType],
   )
-  const hasFilters = Boolean(search.trim() || activeType !== 'All' || status || place || category)
+  const hasFilters = Boolean(search.trim() || activeType !== 'All' || status || place || category || datePreset)
+  const isKpiFiltered = Boolean(status || place || category || datePreset)
   const requestKey = `${JSON.stringify(filters)}|${page}|${reloadKey}`
+  const summaryRequestKey = `${JSON.stringify(kpiFilters)}|${reloadKey}`
+  const alertsRequestKey = `${JSON.stringify(stockFilters)}|${reloadKey}`
   const isLoadingOperations = settledKey !== requestKey
-  const isLoadingSummary = summaryKey !== reloadKey
-  const isLoadingAlerts = alertsKey !== reloadKey
+  const isLoadingSummary = summaryKey !== summaryRequestKey
+  const isLoadingAlerts = alertsKey !== alertsRequestKey
   const isRefreshing = isLoadingOperations || isLoadingSummary || isLoadingAlerts
   const syncState: SyncState = isLoadingSummary ? 'syncing' : summaryError ? 'offline' : 'online'
 
@@ -137,28 +148,28 @@ export default function DashboardPage() {
     }
   }, [reloadKey])
 
-  // KPI summary
+  // KPI summary for the current filters
   useEffect(() => {
     let cancelled = false
     const startedAt = performance.now()
-    getDashboardSummary()
+    getDashboard(kpiFilters)
       .then((res) => {
         if (cancelled) return
-        setSummary(res)
+        setSummary(res.summary)
         setSummaryError(null)
         setLatencyMs(Math.round(performance.now() - startedAt))
         setSyncedAt(new Date())
-        setSummaryKey(reloadKey)
+        setSummaryKey(summaryRequestKey)
       })
       .catch((err: unknown) => {
         if (cancelled) return
         setSummaryError(errorMessage(err, 'Could not load the dashboard summary.'))
-        setSummaryKey(reloadKey)
+        setSummaryKey(summaryRequestKey)
       })
     return () => {
       cancelled = true
     }
-  }, [reloadKey])
+  }, [kpiFilters, summaryRequestKey])
 
   // Operations page for the current filters
   useEffect(() => {
@@ -184,29 +195,34 @@ export default function DashboardPage() {
     }
   }, [filters, page, requestKey])
 
-  // Low / out of stock products
+  // Low / out of stock products (out of stock first), same scope as the stock KPIs
   useEffect(() => {
     let cancelled = false
-    Promise.all([listOutOfStock(1, ALERT_LIMIT), listLowStock(1, ALERT_LIMIT)])
-      .then(([out, low]) => {
+    listStockAlerts({ ...stockFilters, limit: ALERT_LIMIT })
+      .then((res) => {
         if (cancelled) return
-        const merged: StockAlert[] = [...out.data.map((item) => ({ item, isOut: true })), ...low.data.map((item) => ({ item, isOut: false }))]
-        setAlerts(merged.slice(0, ALERT_LIMIT))
-        setAlertTotal(out.pagination.total + low.pagination.total)
+        setAlerts(res.data)
+        setAlertTotal(res.pagination.total)
         setAlertsError(null)
-        setAlertsKey(reloadKey)
+        setAlertsKey(alertsRequestKey)
       })
       .catch((err: unknown) => {
         if (cancelled) return
         setAlertsError(errorMessage(err, 'Could not load stock alerts.'))
-        setAlertsKey(reloadKey)
+        setAlertsKey(alertsRequestKey)
       })
     return () => {
       cancelled = true
     }
-  }, [reloadKey])
+  }, [stockFilters, alertsRequestKey])
+
+  function applyDatePreset(preset: DatePreset) {
+    setDatePreset(preset)
+    setDateRange(dateRangeFor(preset))
+  }
 
   function refresh() {
+    if (datePreset) setDateRange(dateRangeFor(datePreset))
     setReloadKey((key) => key + 1)
   }
 
@@ -220,6 +236,7 @@ export default function DashboardPage() {
     setStatus('')
     setPlace('')
     setCategory('')
+    applyDatePreset('')
     setActiveType('All')
     setPage(1)
   }
@@ -294,6 +311,12 @@ export default function DashboardPage() {
                       {syncState === 'syncing' ? 'Syncing' : 'Active Sync'}
                     </span>
                   )}
+                  {isKpiFiltered && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm font-semibold" title="KPI cards and stock alerts reflect the active filters">
+                      <span className="material-symbols-outlined text-[14px]">filter_alt</span>
+                      Filtered
+                    </span>
+                  )}
                 </div>
                 <p className="font-body-md text-body-md text-on-surface-variant">Monitor, reconcile, and audit inventory operations across your warehouses and locations.</p>
                 {exportError && <p className="font-body-sm text-body-sm text-error">{exportError}</p>}
@@ -339,7 +362,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="mt-space-sm">
                   <div className="flex items-baseline gap-2">
-                    <span className="font-metric-currency text-metric-currency text-on-surface">{metric(summary?.productsInStock)}</span>
+                    <span className="font-metric-currency text-metric-currency text-on-surface">{metric(summary?.totalProductsInStock)}</span>
                     {summary && <span className="font-label-sm text-label-sm text-on-surface-variant">of {formatQty(summary.totalProducts)}</span>}
                   </div>
                   <div className="flex items-center gap-1 mt-1 text-on-surface-variant font-label-sm text-label-sm">
@@ -438,6 +461,14 @@ export default function DashboardPage() {
                     {categories.map((cat) => (
                       <option key={cat.id} value={cat.id}>
                         {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                  {/* Date Range */}
+                  <select aria-label="Date range" className={FILTER_SELECT} id="dateFilter" onChange={(e) => updateFilter(() => applyDatePreset(e.target.value as DatePreset))} value={datePreset}>
+                    {DATE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -613,29 +644,30 @@ export default function DashboardPage() {
               {/* Critical Item Cards Grid */}
               {!alertsError && alerts && alerts.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-base">
-                  {alerts.map(({ item, isOut }) => {
-                    const tone = isOut ? 'out' : 'low'
+                  {alerts.map((alert) => {
+                    const tone = alertTone(alert)
+                    const uom = alert.product.unitOfMeasure
                     return (
-                      <div className="relative bg-surface-container-low rounded-xl p-space-base flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-md transition-shadow" key={item.productId}>
+                      <div className="relative bg-surface-container-low rounded-xl p-space-base flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-md transition-shadow" key={alert.product.id}>
                         <div className={ALERT_STRIP[tone]} />
                         <div className="pl-2 space-y-space-xxs">
                           <div className="flex items-start justify-between">
                             <div>
-                              <span className="font-label-sm text-label-sm text-on-surface-variant font-mono">{item.sku}</span>
-                              <h3 className="font-headline-sm text-headline-sm text-on-surface">{item.productName}</h3>
+                              <span className="font-label-sm text-label-sm text-on-surface-variant font-mono">{alert.product.sku}</span>
+                              <h3 className="font-headline-sm text-headline-sm text-on-surface">{alert.product.name}</h3>
                             </div>
-                            <span className={ALERT_BADGE[tone]}>{isOut ? 'Out of Stock' : 'Low'}</span>
+                            <span className={ALERT_BADGE[tone]}>{tone === 'out' ? 'Out of Stock' : 'Low'}</span>
                           </div>
                           <div className="pt-space-xs text-on-surface-variant font-body-sm text-body-sm">
-                            <div>Category: <span className="text-on-surface font-medium">{item.category}</span></div>
+                            <div>Category: <span className="text-on-surface font-medium">{alert.category.name}</span></div>
                             <div className="flex items-center justify-between mt-1">
-                              <span>Stock: <strong className={ALERT_STOCK[tone]}>{formatQty(item.currentQuantity)} {item.unitOfMeasure}</strong></span>
-                              <span>Reorder at: <strong className="text-on-surface font-mono">{formatQty(item.reorderLevel)} {item.unitOfMeasure}</strong></span>
+                              <span>Stock: <strong className={ALERT_STOCK[tone]}>{formatQty(alert.quantity)} {uom}</strong></span>
+                              <span>Reorder at: <strong className="text-on-surface font-mono">{formatQty(alert.reorderLevel)} {uom}</strong></span>
                             </div>
                           </div>
                         </div>
                         <div className="pl-2 pt-space-base mt-2">
-                          <button className={ALERT_ACTION[tone]} onClick={() => navigate(productDetailPath(item.productId))} type="button">
+                          <button className={ALERT_ACTION[tone]} onClick={() => navigate(productDetailPath(alert.product.id))} type="button">
                             View Product
                           </button>
                         </div>

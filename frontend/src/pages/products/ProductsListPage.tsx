@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { exportProductsCsv, getProductSummary, listCategories, listProducts, setProductStatus, type ProductFilters } from '../../api/products.ts'
 import { STOCK_STATUS_LABEL, type Category, type Paginated, type Product, type ProductSummary, type StockStatus, type Warehouse } from '../../api/types.ts'
 import { listWarehouses } from '../../api/warehouses.ts'
@@ -7,6 +7,7 @@ import { useCurrentUser } from '../../auth/useAuth.ts'
 import { useToast } from '../../context/toast.ts'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
 import { productDetailPath, ROUTES } from '../../routes.ts'
+import { CategoriesDrawer } from './components/CategoriesDrawer.tsx'
 import { LocationPopover } from './components/LocationPopover.tsx'
 import { ProductTableRow } from './components/ProductTableRow.tsx'
 import { QuickEditDrawer } from './components/QuickEditDrawer.tsx'
@@ -38,13 +39,26 @@ export default function ProductsListPage() {
   const { showToast } = useToast()
   const isManager = useCurrentUser()?.role === 'INVENTORY_MANAGER'
 
-  const [search, setSearch] = useState('')
+  // The header search opens /products?search=<term>: it seeds the search box
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlSearch = searchParams.get('search') ?? ''
+
+  const [search, setSearch] = useState(urlSearch)
   const debouncedSearch = useDebouncedValue(search.trim(), 300)
   const [categoryFilter, setCategoryFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<StockStatus | ''>('')
   const [warehouseFilter, setWarehouseFilter] = useState('')
   const [page, setPage] = useState(1)
   const [reloadKey, setReloadKey] = useState(0)
+
+  // Searching again from the header while on this page (a new navigation, even to the same URL) re-syncs the box
+  const [syncedLocationKey, setSyncedLocationKey] = useState(location.key)
+  if (location.key !== syncedLocationKey) {
+    setSyncedLocationKey(location.key)
+    setSearch(urlSearch)
+    setPage(1)
+  }
 
   const [result, setResult] = useState<Paginated<Product> | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -59,6 +73,7 @@ export default function ProductsListPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [locationProduct, setLocationProduct] = useState<Product | null>(null)
   const [drawerProduct, setDrawerProduct] = useState<Product | null>(null)
+  const [showCategories, setShowCategories] = useState(false)
 
   const currentFilters = useMemo<ProductFilters>(
     () => ({
@@ -135,6 +150,7 @@ export default function ProductsListPage() {
   }, [openMenuId])
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), [])
+  const closeCategories = useCallback(() => setShowCategories(false), [])
 
   function clearFilters() {
     setSearch('')
@@ -142,6 +158,16 @@ export default function ProductsListPage() {
     setStatusFilter('')
     setWarehouseFilter('')
     setPage(1)
+    // Drop the header's search term too, so a reload doesn't bring it back
+    if (searchParams.has('search')) {
+      setSearchParams(
+        (params) => {
+          params.delete('search')
+          return params
+        },
+        { replace: true },
+      )
+    }
   }
 
   async function handleExport() {
@@ -270,6 +296,10 @@ export default function ProductsListPage() {
             <p className="text-xs sm:text-sm text-slate-500">Manage products, stock availability, categories, and reorder rules across distributed nodes.</p>
           </div>
           <div className="flex items-center gap-2.5">
+            <button className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 rounded-lg text-xs font-medium shadow-xs flex items-center gap-1.5 transition-all" id="btnManageCategories" onClick={() => setShowCategories(true)}>
+              <span aria-hidden="true" className="material-symbols-outlined text-[17px] text-slate-500">category</span>
+              <span>Categories</span>
+            </button>
             <button className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 rounded-lg text-xs font-medium shadow-xs flex items-center gap-1.5 transition-all disabled:opacity-60" disabled={isExporting} onClick={handleExport}>
               <span className={isExporting ? 'material-symbols-outlined text-[17px] text-slate-500 animate-spin' : 'material-symbols-outlined text-[17px] text-slate-500'}>{isExporting ? 'progress_activity' : 'download'}</span>
               <span>Export CSV</span>
@@ -500,6 +530,9 @@ export default function ProductsListPage() {
 
       {/* Quick Edit Drawer */}
       {drawerProduct && <QuickEditDrawer categories={activeCategories} onClose={() => setDrawerProduct(null)} onSaved={handleQuickEditSaved} product={drawerProduct} />}
+
+      {/* Manage Categories Drawer (its list refreshes the category filter too) */}
+      {showCategories && <CategoriesDrawer canManageStatus={isManager} onCategoriesLoaded={setCategories} onChanged={refresh} onClose={closeCategories} />}
     </>
   )
 }

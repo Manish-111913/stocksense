@@ -266,10 +266,10 @@ export class DeliveriesService {
    * decrease stock for every line (StockService locks the stock rows and refuses to go below zero,
    * throwing INSUFFICIENT_STOCK), then mark it DONE. Any failure rolls all of it back.
    */
-  async validate(id: string, userId: string): Promise<DeliveryView & { stockChanges: DeliveryStockChange[] }> {
+  async validate(id: string, userId: string): Promise<DeliveryView & { stockChanges: DeliveryStockChange[]; alreadyCompleted: boolean }> {
     const stockChanges = await this.prisma.$transaction(async (tx) => {
       const current = await lockDelivery(tx, id);
-      if (current.status === 'DONE') throw new ConflictException(`Delivery ${current.reference} has already been validated`);
+      if (current.status === 'DONE') return null;
       if (current.status !== 'READY') {
         throw new ConflictException(`Delivery ${current.reference} is ${current.status}. Only READY deliveries can be validated.`);
       }
@@ -307,7 +307,8 @@ export class DeliveriesService {
       }));
     });
 
-    return { ...(await this.findOne(id)), stockChanges };
+    // A repeated validate (retry / double click) is idempotent: nothing moves again
+    return { ...(await this.findOne(id)), stockChanges: stockChanges ?? [], alreadyCompleted: stockChanges === null };
   }
 
   // ---------------------------------------------------------------------------

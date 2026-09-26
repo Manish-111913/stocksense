@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { applyAdjustment, cancelAdjustment, exportAdjustmentsCsv, getAdjustmentSummary, listAdjustments, refreshAdjustment, type AdjustmentFilters } from '../../api/adjustments.ts'
+import { applyAdjustment, cancelAdjustment, exportAdjustmentsCsv, getAdjustment, getAdjustmentSummary, listAdjustments, recountAdjustment, type AdjustmentFilters } from '../../api/adjustments.ts'
 import type { Adjustment, AdjustmentSummary, Location, Paginated, Warehouse } from '../../api/types.ts'
 import { listLocations, listWarehouses } from '../../api/warehouses.ts'
 import { useCurrentUser } from '../../auth/useAuth.ts'
@@ -19,6 +19,7 @@ import {
   dateRangeFor,
   isStaleStockError,
   KPI_CARDS,
+  recountToastSubtitle,
   signedQty,
   STATUS_LABELS,
   STATUS_OPTIONS,
@@ -35,12 +36,8 @@ const CHIP = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50
 const RIBBON_ACTIVE = 'px-2.5 py-1 rounded-md font-semibold bg-indigo-600 text-white shadow-xs flex items-center gap-1 transition-all'
 const RIBBON_IDLE = 'px-2.5 py-1 rounded-md font-medium text-slate-600 hover:text-slate-900 transition-all flex items-center gap-1'
 
-/** Editor modal: closed (null), create (adjustment null) or edit a DRAFT */
+/** Editor modal: closed (null), create (adjustment null) or edit an open adjustment */
 type EditorState = { adjustment: Adjustment | null } | null
-
-function refreshedSubtitle(a: Adjustment) {
-  return `${a.reference}: recorded ${formatQty(a.recordedQuantity)} ${a.product.unitOfMeasure}, difference ${signedQty(a.difference)}.`
-}
 
 export default function AdjustmentsPage() {
   useDocumentTitle('StockSense — Inventory Adjustments')
@@ -77,7 +74,7 @@ export default function AdjustmentsPage() {
   const [applyError, setApplyError] = useState<string | null>(null)
   const [applyStale, setApplyStale] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isRecounting, setIsRecounting] = useState(false)
 
   const currentFilters = useMemo<AdjustmentFilters>(
     () => ({
@@ -223,8 +220,8 @@ export default function AdjustmentsPage() {
     setEditor(null)
     setActionError(null)
     if (applied) showToast('Adjustment Applied', applyToastSubtitle(adjustment))
-    else showToast(wasEditing ? 'Draft Updated' : 'Draft Saved', `${adjustment.reference} saved as a draft (${signedQty(adjustment.difference)} ${adjustment.product.unitOfMeasure}).`)
-    if (saveApplyError) setActionError(`${adjustment.reference} was saved as a draft but could not be applied: ${saveApplyError}`)
+    else showToast(wasEditing ? 'Adjustment Updated' : 'Adjustment Saved', `${adjustment.reference} saved, ready to apply (${signedQty(adjustment.difference)} ${adjustment.product.unitOfMeasure}).`)
+    if (saveApplyError) setActionError(`${adjustment.reference} was saved but could not be applied: ${saveApplyError}`)
     if (selected?.id === adjustment.id) setSelected(adjustment)
     refresh()
   }
@@ -259,19 +256,20 @@ export default function AdjustmentsPage() {
     void runAction(adjustment, cancelAdjustment, 'Adjustment Canceled', (a) => `${a.reference} has been canceled.`, 'Could not cancel the adjustment. Please try again.')
   }
 
-  function handleRefresh(adjustment: Adjustment) {
-    void runAction(adjustment, refreshAdjustment, 'Recorded Quantity Refreshed', refreshedSubtitle, 'Could not refresh the recorded quantity. Please try again.')
-  }
-
-  function openApplyModal(adjustment: Adjustment) {
+  function openApplyModal(adjustment: Adjustment, recount = adjustment.isStale) {
     setIsDrawerOpen(false)
     setApplyError(null)
-    setApplyStale(adjustment.isStale)
+    setApplyStale(recount)
     setApplyTarget(adjustment)
   }
 
+  // Row / drawer "Recount": the apply modal in recount mode asks for a new physical count
+  function openRecountModal(adjustment: Adjustment) {
+    openApplyModal(adjustment, true)
+  }
+
   function closeApplyModal() {
-    if (isApplying || isRefreshing) return
+    if (isApplying || isRecounting) return
     setApplyTarget(null)
     setApplyError(null)
     setApplyStale(false)
@@ -287,29 +285,38 @@ export default function AdjustmentsPage() {
       if (selected?.id === applied.id) setSelected(applied)
       showToast('Adjustment Applied', applyToastSubtitle(applied))
     } catch (err) {
-      setApplyStale(isStaleStockError(err))
-      setApplyError(errorMessage(err, 'Could not apply the adjustment. Please try again.'))
+      if (isStaleStockError(err)) {
+        // Stock moved after the count: show the recount form with the live quantity
+        setApplyStale(true)
+        const targetId = applyTarget.id
+        getAdjustment(targetId)
+          .then((latest) => setApplyTarget((current) => (current?.id === targetId ? latest : current)))
+          .catch(() => undefined)
+      } else {
+        setApplyStale(false)
+        setApplyError(errorMessage(err, 'Could not apply the adjustment. Please try again.'))
+      }
     } finally {
       setIsApplying(false)
       refresh()
     }
   }
 
-  async function refreshApplyTarget() {
+  async function recountApplyTarget(physicalQuantity: number) {
     if (!applyTarget) return
-    setIsRefreshing(true)
+    setIsRecounting(true)
+    setApplyError(null)
     try {
-      const updated = await refreshAdjustment(applyTarget.id)
-      setApplyTarget(updated)
+      const updated = await recountAdjustment(applyTarget.id, physicalQuantity)
+      // Staff can recount but not apply: nothing left to do in the modal
+      setApplyTarget(canApply ? updated : null)
       setApplyStale(updated.isStale)
-      setApplyError(null)
       if (selected?.id === updated.id) setSelected(updated)
-      showToast('Recorded Quantity Refreshed', refreshedSubtitle(updated))
+      showToast('Recount Saved', recountToastSubtitle(updated))
     } catch (err) {
-      setApplyStale(false)
-      setApplyError(errorMessage(err, 'Could not refresh the recorded quantity. Please try again.'))
+      setApplyError(errorMessage(err, 'Could not save the recount. Please try again.'))
     } finally {
-      setIsRefreshing(false)
+      setIsRecounting(false)
       refresh()
     }
   }
@@ -325,6 +332,8 @@ export default function AdjustmentsPage() {
 
   function kpiCount(key: KpiKey) {
     if (!summary) return null
+    // "Ready" counts every open adjustment (legacy DRAFT / WAITING included)
+    if (key === 'READY') return (summary.DRAFT ?? 0) + (summary.WAITING ?? 0) + (summary.READY ?? 0)
     return key ? summary[key] : summary.total
   }
 
@@ -390,7 +399,7 @@ export default function AdjustmentsPage() {
         onCancel={handleCancel}
         onEdit={openEditModal}
         onInspect={openInspectorDrawer}
-        onRefresh={handleRefresh}
+        onRecount={openRecountModal}
       />
     ))
   }
@@ -418,8 +427,8 @@ export default function AdjustmentsPage() {
             <span className="text-[11px] font-normal text-indigo-700 hidden sm:inline">Physical stock reconciliation &amp; variance auditing</span>
           </div>
           <div className="flex items-center gap-1 text-[11px] bg-white p-0.5 rounded-lg border border-indigo-200/70 shadow-xs">
-            <button className={statusFilter === 'DRAFT' ? RIBBON_ACTIVE : RIBBON_IDLE} onClick={() => filterByStatus('DRAFT')}>
-              <span className="material-symbols-outlined text-[13px]">visibility</span> Drafts to Apply
+            <button className={statusFilter === 'READY' ? RIBBON_ACTIVE : RIBBON_IDLE} onClick={() => filterByStatus('READY')}>
+              <span className="material-symbols-outlined text-[13px]">visibility</span> Ready to Apply
             </button>
             <button className={statusFilter === '' ? RIBBON_ACTIVE : RIBBON_IDLE} onClick={() => filterByStatus('')}>
               <span className="material-symbols-outlined text-[13px]">list</span> All Records
@@ -592,7 +601,7 @@ export default function AdjustmentsPage() {
           <div className="p-3.5 bg-slate-50/70 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[15px] text-indigo-600">verified_user</span>
-              <span>Only applied adjustments change stock. A draft goes stale if stock moves before it is applied.</span>
+              <span>Only applied adjustments change stock. A ready adjustment goes stale if stock moves before it is applied and must be recounted.</span>
             </div>
             {!loadError && pagination && pagination.total > 0 && (
               <div className="flex items-center gap-3 font-mono">
@@ -624,14 +633,26 @@ export default function AdjustmentsPage() {
         onCancel={handleCancel}
         onClose={closeInspectorDrawer}
         onEdit={openEditModal}
-        onRefresh={handleRefresh}
+        onRecount={openRecountModal}
       />
 
       {/* MODAL 1: Create / Edit Adjustment */}
       {editor && <CreateAdjustmentModal adjustment={editor.adjustment} canApply={canApply} onClose={() => setEditor(null)} onSaved={handleSaved} />}
 
       {/* MODAL 2: Apply Confirmation Dialog */}
-      {applyTarget && <ApplyModal error={applyError} isPosting={isApplying} isRefreshing={isRefreshing} isStale={applyStale} onClose={closeApplyModal} onConfirm={confirmApply} onRefresh={refreshApplyTarget} target={applyTarget} />}
+      {applyTarget && (
+        <ApplyModal
+          canApply={canApply}
+          error={applyError}
+          isPosting={isApplying}
+          isRecounting={isRecounting}
+          isStale={applyStale}
+          onClose={closeApplyModal}
+          onConfirm={confirmApply}
+          onRecount={(physicalQuantity) => void recountApplyTarget(physicalQuantity)}
+          target={applyTarget}
+        />
+      )}
     </>
   )
 }

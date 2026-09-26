@@ -39,8 +39,9 @@ async function toApiError(res: Response): Promise<ApiError> {
   let message = `Request failed (${res.status})`
   let code: string | undefined
   try {
-    const body = (await res.json()) as { message?: string | string[]; error?: string }
-    if (body.error && /^[A-Z][A-Z_]+$/.test(body.error)) code = body.error
+    const body = (await res.json()) as { message?: string | string[]; error?: string; code?: string }
+    const raw = body.code ?? body.error
+    if (raw && /^[A-Z][A-Z_]+$/.test(raw)) code = raw
     if (Array.isArray(body.message)) message = body.message[0] ?? message
     else if (body.message) message = body.message
   } catch {

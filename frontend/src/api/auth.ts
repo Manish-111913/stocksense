@@ -25,8 +25,14 @@ export async function logout() {
 }
 
 /** Always resolves with the same message whether or not the account exists */
+/** OTP timings come from the server config (same response whether or not the account exists) */
+export interface OtpRequestResponse extends MessageResponse {
+  expiresInSeconds: number
+  resendCooldownSeconds: number
+}
+
 export function requestPasswordReset(email: string) {
-  return api<MessageResponse>('POST', '/auth/forgot-password', { body: { email }, auth: false })
+  return api<OtpRequestResponse>('POST', '/auth/forgot-password', { body: { email }, auth: false })
 }
 
 /** Returns a short-lived token for resetPassword() */

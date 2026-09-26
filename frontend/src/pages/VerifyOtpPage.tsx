@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router'
+import { Navigate, useLocation, useNavigate } from 'react-router'
 import { requestPasswordReset, verifyOtp } from '../api/auth.ts'
 import { ApiError } from '../api/client.ts'
 import { AlertCircleIcon, ChevronLeftIcon } from '../components/icons.tsx'
@@ -11,8 +11,8 @@ import { maskEmail } from '../lib/validation.ts'
 import { ROUTES } from '../routes.ts'
 
 const OTP_LENGTH = 6
-const RESEND_COOLDOWN_SECONDS = 30
-const OTP_EXPIRY_SECONDS = 299 // 4 mins 59s
+/** Used only if this page is opened without the timings from the forgot-password response */
+const FALLBACK_OTP_POLICY = { expiresInSeconds: 300, resendCooldownSeconds: 30 }
 const OTP_EXPIRED_MESSAGE = 'The verification code has expired. Please request a new code.'
 
 const emptyOtp = () => Array<string>(OTP_LENGTH).fill('')
@@ -27,6 +27,13 @@ export default function VerifyOtpPage() {
   useDocumentTitle('StockSense — Verify OTP')
   const navigate = useNavigate()
   const { registeredEmail, setResetToken } = useAuthFlow()
+  const location = useLocation()
+  const [otpPolicy, setOtpPolicy] = useState<{ expiresInSeconds: number; resendCooldownSeconds: number }>(() => {
+    const state = location.state as { expiresInSeconds?: unknown; resendCooldownSeconds?: unknown } | null
+    return typeof state?.expiresInSeconds === 'number' && typeof state.resendCooldownSeconds === 'number'
+      ? { expiresInSeconds: state.expiresInSeconds, resendCooldownSeconds: state.resendCooldownSeconds }
+      : FALLBACK_OTP_POLICY
+  })
 
   const [digits, setDigits] = useState(emptyOtp)
   const [otpAlert, setOtpAlert] = useState<string | null>(null)
@@ -38,9 +45,9 @@ export default function VerifyOtpPage() {
   const [isResending, setIsResending] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // Resend cooldown (30s) and code expiry (5 minutes)
-  const resendCooldown = useCountdown(RESEND_COOLDOWN_SECONDS)
-  const expiry = useCountdown(OTP_EXPIRY_SECONDS, () => showOtpAlert(OTP_EXPIRED_MESSAGE))
+  // Resend cooldown and code expiry, as configured on the server (the code was just sent, so they start now)
+  const resendCooldown = useCountdown(otpPolicy.resendCooldownSeconds)
+  const expiry = useCountdown(otpPolicy.expiresInSeconds, () => showOtpAlert(OTP_EXPIRED_MESSAGE))
 
   const isComplete = digits.join('').length === OTP_LENGTH
 
@@ -132,7 +139,8 @@ export default function VerifyOtpPage() {
     setIsResending(true)
 
     try {
-      await requestPasswordReset(registeredEmail)
+      const { expiresInSeconds, resendCooldownSeconds } = await requestPasswordReset(registeredEmail)
+      setOtpPolicy({ expiresInSeconds, resendCooldownSeconds })
       hideOtpAlert()
       setResendNotice('A new OTP has been dispatched to your email.')
       setTimeout(() => setResendNotice(null), 5000)

@@ -348,7 +348,7 @@ export default function ReceiptsPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80 mb-6">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="hover:text-indigo-600 font-medium flex items-center gap-1 transition-colors cursor-pointer">
+                <span className="hover:text-indigo-600 font-medium flex items-center gap-1 transition-colors cursor-pointer" onClick={() => navigate(ROUTES.dashboard)}>
                   <span className="material-symbols-outlined text-[15px]">corporate_fare</span>
                   <span>Operations</span>
                 </span>

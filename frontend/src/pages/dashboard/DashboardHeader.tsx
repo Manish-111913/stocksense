@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
@@ -33,6 +33,14 @@ export function DashboardHeader({ alertCount, onAlertsClick, onSearch }: Dashboa
   function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to?: string) {
     event.preventDefault()
     if (to) navigate(to)
+  }
+
+  // User badge opens the profile page (mouse, Enter or Space)
+  function handleBadgeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      navigate(ROUTES.profile)
+    }
   }
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -74,7 +82,7 @@ export function DashboardHeader({ alertCount, onAlertsClick, onSearch }: Dashboa
           <span className="material-symbols-outlined text-[20px]">notifications</span>
           {alertCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error" />}
         </button>
-        <div className="flex items-center gap-space-sm pl-2 cursor-pointer group rounded-xl p-1 hover:bg-surface-container-low transition-colors" onClick={() => navigate(ROUTES.profile)} title="Profile">
+        <div className="flex items-center gap-space-sm pl-2 cursor-pointer group rounded-xl p-1 hover:bg-surface-container-low transition-colors" onClick={() => navigate(ROUTES.profile)} onKeyDown={handleBadgeKeyDown} role="button" tabIndex={0} title="Profile">
           <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-semibold text-body-sm shadow-sm">{initial}</div>
           <div className="hidden lg:flex flex-col text-left">
             <span className="font-label-md text-label-md text-on-surface font-semibold leading-tight">{name}</span>

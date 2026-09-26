@@ -19,6 +19,9 @@ export class InsufficientStockException extends ConflictException {
     super({
       statusCode: 409,
       error: 'INSUFFICIENT_STOCK',
+      code: 'INSUFFICIENT_STOCK',
+      available: details.available,
+      requested: details.requested,
       message: `Insufficient stock for ${details.sku} at ${details.locationName}: ${details.available} ${details.unitOfMeasure} available, ${details.requested} ${details.unitOfMeasure} requested`,
       details,
     });
@@ -34,13 +37,14 @@ export interface StaleStockDetails {
   currentVersion: number;
 }
 
-/** Stock changed since the adjustment's recorded quantity was read; recount against the current figure */
+/** Stock changed after the adjustment's recorded quantity was read (STOCK_CHANGED_SINCE_ADJUSTMENT): recount */
 export class StaleStockException extends ConflictException {
   constructor(readonly details: StaleStockDetails) {
     super({
       statusCode: 409,
-      error: 'STALE_STOCK',
-      message: `Stock changed since it was recorded (now ${details.currentQuantity}). Refresh the recorded quantity and try again.`,
+      error: 'STOCK_CHANGED_SINCE_ADJUSTMENT',
+      code: 'STOCK_CHANGED_SINCE_ADJUSTMENT',
+      message: `Stock changed after this adjustment was created (now ${details.currentQuantity}). Recount and enter the new physical quantity, or create a new adjustment.`,
       details,
     });
   }
@@ -49,6 +53,6 @@ export class StaleStockException extends ConflictException {
 /** Unknown / inactive product, location or warehouse, or an invalid quantity */
 export class InvalidStockOperationException extends BadRequestException {
   constructor(message: string) {
-    super({ statusCode: 400, error: 'INVALID_STOCK_OPERATION', message });
+    super({ statusCode: 400, error: 'INVALID_STOCK_OPERATION', code: 'INVALID_STOCK_OPERATION', message });
   }
 }

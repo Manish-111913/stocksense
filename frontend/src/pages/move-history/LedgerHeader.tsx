@@ -1,5 +1,7 @@
-import { type MouseEvent, type Ref } from 'react'
+import { type MouseEvent, type Ref, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { getProductSummary } from '../../api/products.ts'
+import type { ProductSummary } from '../../api/types.ts'
 import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
 import { NAV_LINKS } from './data.ts'
@@ -19,9 +21,26 @@ export function LedgerHeader({ search, onSearchChange, searchRef, isExporting, o
   const { name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
 
-  function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to?: string) {
+  // Live stock alerts (low / out of stock) for the bell dot
+  const [productSummary, setProductSummary] = useState<ProductSummary | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    getProductSummary()
+      .then((next) => {
+        if (!cancelled) setProductSummary(next)
+      })
+      .catch(() => {
+        if (!cancelled) setProductSummary(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  const stockAlerts = productSummary ? productSummary.lowStock + productSummary.outOfStock : 0
+
+  function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to: string) {
     event.preventDefault()
-    if (to) navigate(to)
+    navigate(to)
   }
 
   return (
@@ -53,8 +72,9 @@ export function LedgerHeader({ search, onSearchChange, searchRef, isExporting, o
         </div>
         {/* Right User Actions */}
         <div className="flex items-center gap-3">
-          <button aria-label="Notifications" className="relative p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors" type="button">
+          <button aria-label="Notifications" className="relative p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors" onClick={() => navigate(ROUTES.dashboard)} title={stockAlerts > 0 ? `${stockAlerts} stock ${stockAlerts === 1 ? 'alert' : 'alerts'} (low / out of stock)` : 'No stock alerts'} type="button">
             <span className="material-symbols-outlined text-[20px]">notifications</span>
+            {stockAlerts > 0 && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-rose-500 ring-2 ring-white" />}
           </button>
           <div className="h-5 w-px bg-slate-200" />
           <div className="flex items-center gap-2 pl-1 cursor-pointer" onClick={() => navigate(ROUTES.profile)}>
@@ -87,7 +107,7 @@ export function LedgerHeader({ search, onSearchChange, searchRef, isExporting, o
           })}
         </nav>
         <div className="hidden lg:flex items-center gap-2 shrink-0">
-          <span className="text-[11px] font-mono text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs">/ledger</span>
+          <span className="text-[11px] font-mono text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs">{ROUTES.moveHistory}</span>
           <button className="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white border border-slate-200 transition-all flex items-center gap-1 disabled:opacity-60" disabled={isExporting} onClick={onExport} type="button">
             <span className={isExporting ? 'material-symbols-outlined text-[14px] animate-spin' : 'material-symbols-outlined text-[14px]'}>{isExporting ? 'progress_activity' : 'download'}</span>
             Export CSV

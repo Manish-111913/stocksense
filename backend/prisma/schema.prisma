@@ -38,32 +38,32 @@ model Customer {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model Delivery {
-  id                                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reference                         String         @unique @default(dbgenerated("('WH/OUT/'::text || lpad((nextval('delivery_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
-  customerId                        String         @map("customer_id") @db.Uuid
-  warehouseId                       String         @map("warehouse_id") @db.Uuid
-  sourceLocationId                  String         @map("source_location_id") @db.Uuid
-  status                            DocumentStatus @default(DRAFT)
-  deliveryDate                      DateTime       @default(now()) @map("delivery_date") @db.Timestamptz(6)
-  createdBy                         String         @map("created_by") @db.Uuid
-  updatedBy                         String?        @map("updated_by") @db.Uuid
-  pickedBy                          String?        @map("picked_by") @db.Uuid
-  pickedAt                          DateTime?      @map("picked_at") @db.Timestamptz(6)
-  packedBy                          String?        @map("packed_by") @db.Uuid
-  packedAt                          DateTime?      @map("packed_at") @db.Timestamptz(6)
-  validatedBy                       String?        @map("validated_by") @db.Uuid
-  validatedAt                       DateTime?      @map("validated_at") @db.Timestamptz(6)
-  createdAt                         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                         DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
-  usersDeliveriesCreatedByTousers   User           @relation("deliveries_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
-  customers                         Customer       @relation(fields: [customerId], references: [id], onUpdate: NoAction)
-  locations                         Location       @relation(fields: [sourceLocationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "deliveries_location_in_warehouse_fk")
-  usersDeliveriesPackedByTousers    User?          @relation("deliveries_packed_byTousers", fields: [packedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  usersDeliveriesPickedByTousers    User?          @relation("deliveries_picked_byTousers", fields: [pickedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  usersDeliveriesUpdatedByTousers   User?          @relation("deliveries_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  usersDeliveriesValidatedByTousers User?          @relation("deliveries_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  warehouses                        Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
-  deliveryItems                     DeliveryItem[]
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference        String         @unique @default(dbgenerated("('WH/OUT/'::text || lpad((nextval('delivery_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
+  customerId       String         @map("customer_id") @db.Uuid
+  warehouseId      String         @map("warehouse_id") @db.Uuid
+  sourceLocationId String         @map("source_location_id") @db.Uuid
+  status           DocumentStatus @default(DRAFT)
+  deliveryDate     DateTime       @default(now()) @map("delivery_date") @db.Timestamptz(6)
+  createdBy        String         @map("created_by") @db.Uuid
+  updatedBy        String?        @map("updated_by") @db.Uuid
+  pickedBy         String?        @map("picked_by") @db.Uuid
+  pickedAt         DateTime?      @map("picked_at") @db.Timestamptz(6)
+  packedBy         String?        @map("packed_by") @db.Uuid
+  packedAt         DateTime?      @map("packed_at") @db.Timestamptz(6)
+  validatedBy      String?        @map("validated_by") @db.Uuid
+  validatedAt      DateTime?      @map("validated_at") @db.Timestamptz(6)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdByUser    User           @relation("deliveries_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  customer         Customer       @relation(fields: [customerId], references: [id], onUpdate: NoAction)
+  sourceLocation   Location       @relation(fields: [sourceLocationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "deliveries_location_in_warehouse_fk")
+  packedByUser     User?          @relation("deliveries_packed_byTousers", fields: [packedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  pickedByUser     User?          @relation("deliveries_picked_byTousers", fields: [pickedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  updatedByUser    User?          @relation("deliveries_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  validatedByUser  User?          @relation("deliveries_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  warehouse        Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+  items            DeliveryItem[]
 
   @@index([customerId])
   @@index([deliveryDate])
@@ -81,8 +81,8 @@ model DeliveryItem {
   quantity   Decimal  @db.Decimal(18, 3)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-  deliveries Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  products   Product  @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  delivery   Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product    Product  @relation(fields: [productId], references: [id], onUpdate: NoAction)
 
   @@unique([deliveryId, productId], map: "delivery_items_delivery_product_key")
   @@index([productId])
@@ -91,14 +91,14 @@ model DeliveryItem {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model InternalTransferItem {
-  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  transferId        String           @map("transfer_id") @db.Uuid
-  productId         String           @map("product_id") @db.Uuid
-  quantity          Decimal          @db.Decimal(18, 3)
-  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
-  products          Product          @relation(fields: [productId], references: [id], onUpdate: NoAction)
-  internalTransfers InternalTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transferId String           @map("transfer_id") @db.Uuid
+  productId  String           @map("product_id") @db.Uuid
+  quantity   Decimal          @db.Decimal(18, 3)
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  product    Product          @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  transfer   InternalTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([transferId, productId], map: "internal_transfer_items_transfer_product_key")
   @@index([productId])
@@ -107,28 +107,28 @@ model InternalTransferItem {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model InternalTransfer {
-  id                                                                               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reference                                                                        String                 @unique @default(dbgenerated("('WH/TR/'::text || lpad((nextval('transfer_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
-  sourceWarehouseId                                                                String                 @map("source_warehouse_id") @db.Uuid
-  sourceLocationId                                                                 String                 @map("source_location_id") @db.Uuid
-  destinationWarehouseId                                                           String                 @map("destination_warehouse_id") @db.Uuid
-  destinationLocationId                                                            String                 @map("destination_location_id") @db.Uuid
-  status                                                                           DocumentStatus         @default(DRAFT)
-  transferDate                                                                     DateTime               @default(now()) @map("transfer_date") @db.Timestamptz(6)
-  createdBy                                                                        String                 @map("created_by") @db.Uuid
-  updatedBy                                                                        String?                @map("updated_by") @db.Uuid
-  validatedBy                                                                      String?                @map("validated_by") @db.Uuid
-  validatedAt                                                                      DateTime?              @map("validated_at") @db.Timestamptz(6)
-  createdAt                                                                        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                                                                        DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
-  internalTransferItems                                                            InternalTransferItem[]
-  usersInternalTransfersCreatedByTousers                                           User                   @relation("internal_transfers_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
-  locationsInternalTransfersDestinationLocationIdDestinationWarehouseIdTolocations Location               @relation("internal_transfers_destination_location_id_destination_warehouse_idTolocations", fields: [destinationLocationId, destinationWarehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "internal_transfers_destination_in_warehouse_fk")
-  warehousesInternalTransfersDestinationWarehouseIdTowarehouses                    Warehouse              @relation("internal_transfers_destination_warehouse_idTowarehouses", fields: [destinationWarehouseId], references: [id], onUpdate: NoAction)
-  locationsInternalTransfersSourceLocationIdSourceWarehouseIdTolocations           Location               @relation("internal_transfers_source_location_id_source_warehouse_idTolocations", fields: [sourceLocationId, sourceWarehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "internal_transfers_source_in_warehouse_fk")
-  warehousesInternalTransfersSourceWarehouseIdTowarehouses                         Warehouse              @relation("internal_transfers_source_warehouse_idTowarehouses", fields: [sourceWarehouseId], references: [id], onUpdate: NoAction)
-  usersInternalTransfersUpdatedByTousers                                           User?                  @relation("internal_transfers_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  usersInternalTransfersValidatedByTousers                                         User?                  @relation("internal_transfers_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference              String                 @unique @default(dbgenerated("('WH/TR/'::text || lpad((nextval('transfer_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
+  sourceWarehouseId      String                 @map("source_warehouse_id") @db.Uuid
+  sourceLocationId       String                 @map("source_location_id") @db.Uuid
+  destinationWarehouseId String                 @map("destination_warehouse_id") @db.Uuid
+  destinationLocationId  String                 @map("destination_location_id") @db.Uuid
+  status                 DocumentStatus         @default(DRAFT)
+  transferDate           DateTime               @default(now()) @map("transfer_date") @db.Timestamptz(6)
+  createdBy              String                 @map("created_by") @db.Uuid
+  updatedBy              String?                @map("updated_by") @db.Uuid
+  validatedBy            String?                @map("validated_by") @db.Uuid
+  validatedAt            DateTime?              @map("validated_at") @db.Timestamptz(6)
+  createdAt              DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  items                  InternalTransferItem[]
+  createdByUser          User                   @relation("internal_transfers_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  destinationLocation    Location               @relation("internal_transfers_destination_location_id_destination_warehouse_idTolocations", fields: [destinationLocationId, destinationWarehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "internal_transfers_destination_in_warehouse_fk")
+  destinationWarehouse   Warehouse              @relation("internal_transfers_destination_warehouse_idTowarehouses", fields: [destinationWarehouseId], references: [id], onUpdate: NoAction)
+  sourceLocation         Location               @relation("internal_transfers_source_location_id_source_warehouse_idTolocations", fields: [sourceLocationId, sourceWarehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "internal_transfers_source_in_warehouse_fk")
+  sourceWarehouse        Warehouse              @relation("internal_transfers_source_warehouse_idTowarehouses", fields: [sourceWarehouseId], references: [id], onUpdate: NoAction)
+  updatedByUser          User?                  @relation("internal_transfers_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  validatedByUser        User?                  @relation("internal_transfers_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@index([destinationLocationId])
   @@index([sourceLocationId])
@@ -139,30 +139,30 @@ model InternalTransfer {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model InventoryAdjustment {
-  id                                        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reference                                 String         @unique @default(dbgenerated("('WH/ADJ/'::text || lpad((nextval('adjustment_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
-  productId                                 String         @map("product_id") @db.Uuid
-  warehouseId                               String         @map("warehouse_id") @db.Uuid
-  locationId                                String         @map("location_id") @db.Uuid
-  recordedQuantity                          Decimal        @map("recorded_quantity") @db.Decimal(18, 3)
-  recordedStockVersion                      Int            @default(0) @map("recorded_stock_version")
-  physicalQuantity                          Decimal        @map("physical_quantity") @db.Decimal(18, 3)
-  difference                                Decimal        @db.Decimal(18, 3)
-  reason                                    String         @db.VarChar(255)
-  notes                                     String?
-  status                                    DocumentStatus @default(DRAFT)
-  createdBy                                 String         @map("created_by") @db.Uuid
-  updatedBy                                 String?        @map("updated_by") @db.Uuid
-  appliedBy                                 String?        @map("applied_by") @db.Uuid
-  appliedAt                                 DateTime?      @map("applied_at") @db.Timestamptz(6)
-  createdAt                                 DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                                 DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
-  usersInventoryAdjustmentsAppliedByTousers User?          @relation("inventory_adjustments_applied_byTousers", fields: [appliedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  usersInventoryAdjustmentsCreatedByTousers User           @relation("inventory_adjustments_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
-  locations                                 Location       @relation(fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "inventory_adjustments_location_in_warehouse_fk")
-  products                                  Product        @relation(fields: [productId], references: [id], onUpdate: NoAction)
-  usersInventoryAdjustmentsUpdatedByTousers User?          @relation("inventory_adjustments_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  warehouses                                Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+  id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference            String         @unique @default(dbgenerated("('WH/ADJ/'::text || lpad((nextval('adjustment_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
+  productId            String         @map("product_id") @db.Uuid
+  warehouseId          String         @map("warehouse_id") @db.Uuid
+  locationId           String         @map("location_id") @db.Uuid
+  recordedQuantity     Decimal        @map("recorded_quantity") @db.Decimal(18, 3)
+  recordedStockVersion Int            @default(0) @map("recorded_stock_version")
+  physicalQuantity     Decimal        @map("physical_quantity") @db.Decimal(18, 3)
+  difference           Decimal        @db.Decimal(18, 3)
+  reason               String         @db.VarChar(255)
+  notes                String?
+  status               DocumentStatus @default(DRAFT)
+  createdBy            String         @map("created_by") @db.Uuid
+  updatedBy            String?        @map("updated_by") @db.Uuid
+  appliedBy            String?        @map("applied_by") @db.Uuid
+  appliedAt            DateTime?      @map("applied_at") @db.Timestamptz(6)
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  appliedByUser        User?          @relation("inventory_adjustments_applied_byTousers", fields: [appliedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  createdByUser        User           @relation("inventory_adjustments_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  location             Location       @relation(fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "inventory_adjustments_location_in_warehouse_fk")
+  product              Product        @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  updatedByUser        User?          @relation("inventory_adjustments_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  warehouse            Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
 
   @@index([createdAt])
   @@index([locationId])
@@ -250,8 +250,8 @@ model ReceiptItem {
   quantity  Decimal  @db.Decimal(18, 3)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-  products  Product  @relation(fields: [productId], references: [id], onUpdate: NoAction)
-  receipts  Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product   Product  @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  receipt   Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([receiptId, productId], map: "receipt_items_receipt_product_key")
   @@index([productId])
@@ -260,26 +260,26 @@ model ReceiptItem {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model Receipt {
-  id                              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reference                       String         @unique @default(dbgenerated("('WH/IN/'::text || lpad((nextval('receipt_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
-  supplierId                      String         @map("supplier_id") @db.Uuid
-  warehouseId                     String         @map("warehouse_id") @db.Uuid
-  locationId                      String         @map("location_id") @db.Uuid
-  status                          DocumentStatus @default(DRAFT)
-  receiptDate                     DateTime       @default(now()) @map("receipt_date") @db.Timestamptz(6)
-  createdBy                       String         @map("created_by") @db.Uuid
-  updatedBy                       String?        @map("updated_by") @db.Uuid
-  validatedBy                     String?        @map("validated_by") @db.Uuid
-  validatedAt                     DateTime?      @map("validated_at") @db.Timestamptz(6)
-  createdAt                       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                       DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
-  receiptItems                    ReceiptItem[]
-  usersReceiptsCreatedByTousers   User           @relation("receipts_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
-  locations                       Location       @relation(fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "receipts_location_in_warehouse_fk")
-  suppliers                       Supplier       @relation(fields: [supplierId], references: [id], onUpdate: NoAction)
-  usersReceiptsUpdatedByTousers   User?          @relation("receipts_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  usersReceiptsValidatedByTousers User?          @relation("receipts_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  warehouses                      Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference       String         @unique @default(dbgenerated("('WH/IN/'::text || lpad((nextval('receipt_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
+  supplierId      String         @map("supplier_id") @db.Uuid
+  warehouseId     String         @map("warehouse_id") @db.Uuid
+  locationId      String         @map("location_id") @db.Uuid
+  status          DocumentStatus @default(DRAFT)
+  receiptDate     DateTime       @default(now()) @map("receipt_date") @db.Timestamptz(6)
+  createdBy       String         @map("created_by") @db.Uuid
+  updatedBy       String?        @map("updated_by") @db.Uuid
+  validatedBy     String?        @map("validated_by") @db.Uuid
+  validatedAt     DateTime?      @map("validated_at") @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  items           ReceiptItem[]
+  createdByUser   User           @relation("receipts_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  location        Location       @relation(fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "receipts_location_in_warehouse_fk")
+  supplier        Supplier       @relation(fields: [supplierId], references: [id], onUpdate: NoAction)
+  updatedByUser   User?          @relation("receipts_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  validatedByUser User?          @relation("receipts_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  warehouse       Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
 
   @@index([locationId])
   @@index([receiptDate])
@@ -309,28 +309,28 @@ model Stock {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model StockLedger {
-  id                                                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  productId                                            String             @map("product_id") @db.Uuid
-  warehouseId                                          String             @map("warehouse_id") @db.Uuid
-  locationId                                           String             @map("location_id") @db.Uuid
-  movementType                                         InventoryOperation @map("movement_type")
-  direction                                            LedgerDirection
-  quantity                                             Decimal            @db.Decimal(18, 3)
-  sourceLocationId                                     String?            @map("source_location_id") @db.Uuid
-  destinationLocationId                                String?            @map("destination_location_id") @db.Uuid
-  referenceType                                        InventoryOperation @map("reference_type")
-  referenceId                                          String             @map("reference_id") @db.Uuid
-  referenceCode                                        String             @map("reference_code") @db.VarChar(50)
-  quantityBefore                                       Decimal?           @map("quantity_before") @db.Decimal(18, 3)
-  quantityAfter                                        Decimal?           @map("quantity_after") @db.Decimal(18, 3)
-  performedBy                                          String             @map("performed_by") @db.Uuid
-  createdAt                                            DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  locationsStockLedgerDestinationLocationIdTolocations Location?          @relation("stock_ledger_destination_location_idTolocations", fields: [destinationLocationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  locationsStockLedgerLocationIdWarehouseIdTolocations Location           @relation("stock_ledger_location_id_warehouse_idTolocations", fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "stock_ledger_location_in_warehouse_fk")
-  users                                                User               @relation(fields: [performedBy], references: [id], onUpdate: NoAction)
-  products                                             Product            @relation(fields: [productId], references: [id], onUpdate: NoAction)
-  locationsStockLedgerSourceLocationIdTolocations      Location?          @relation("stock_ledger_source_location_idTolocations", fields: [sourceLocationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  warehouses                                           Warehouse          @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId             String             @map("product_id") @db.Uuid
+  warehouseId           String             @map("warehouse_id") @db.Uuid
+  locationId            String             @map("location_id") @db.Uuid
+  movementType          InventoryOperation @map("movement_type")
+  direction             LedgerDirection
+  quantity              Decimal            @db.Decimal(18, 3)
+  sourceLocationId      String?            @map("source_location_id") @db.Uuid
+  destinationLocationId String?            @map("destination_location_id") @db.Uuid
+  referenceType         InventoryOperation @map("reference_type")
+  referenceId           String             @map("reference_id") @db.Uuid
+  referenceCode         String             @map("reference_code") @db.VarChar(50)
+  quantityBefore        Decimal?           @map("quantity_before") @db.Decimal(18, 3)
+  quantityAfter         Decimal?           @map("quantity_after") @db.Decimal(18, 3)
+  performedBy           String             @map("performed_by") @db.Uuid
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  destinationLocation   Location?          @relation("stock_ledger_destination_location_idTolocations", fields: [destinationLocationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  location              Location           @relation("stock_ledger_location_id_warehouse_idTolocations", fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "stock_ledger_location_in_warehouse_fk")
+  performedByUser       User               @relation(fields: [performedBy], references: [id], onUpdate: NoAction)
+  product               Product            @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  sourceLocation        Location?          @relation("stock_ledger_source_location_idTolocations", fields: [sourceLocationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  warehouse             Warehouse          @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
 
   @@index([createdAt(sort: Desc)])
   @@index([locationId])

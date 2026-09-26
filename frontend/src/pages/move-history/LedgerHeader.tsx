@@ -1,4 +1,4 @@
-import { type MouseEvent } from 'react'
+import { type MouseEvent, type Ref } from 'react'
 import { useNavigate } from 'react-router'
 import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
@@ -6,8 +6,16 @@ import { NAV_LINKS } from './data.ts'
 
 const NAV_LINK = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-colors'
 
+interface LedgerHeaderProps {
+  search: string
+  onSearchChange: (value: string) => void
+  searchRef: Ref<HTMLInputElement>
+  isExporting: boolean
+  onExport: () => void
+}
+
 // macOS window chrome header + pinned sub-navigation tab bar
-export function LedgerHeader() {
+export function LedgerHeader({ search, onSearchChange, searchRef, isExporting, onExport }: LedgerHeaderProps) {
   const { name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
 
@@ -32,14 +40,14 @@ export function LedgerHeader() {
             </div>
             <span className="font-display font-bold text-slate-900 text-sm tracking-tight">StockSense</span>
             <span className="text-slate-300">—</span>
-            <span className="text-xs font-medium text-slate-500 hidden sm:inline">Move History &amp; Stock Ledger v2.4</span>
+            <span className="text-xs font-medium text-slate-500 hidden sm:inline">Move History &amp; Stock Ledger</span>
           </div>
         </div>
         {/* Global Search Bar */}
         <div className="flex-1 max-w-lg mx-2 hidden md:block">
           <div className="relative flex items-center">
             <span className="material-symbols-outlined absolute left-3 text-[17px] text-slate-400">search</span>
-            <input className="w-full pl-9 pr-14 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" placeholder="Search catalog, SKUs, or transfer batch..." type="text" />
+            <input className="w-full pl-9 pr-14 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" onChange={(e) => onSearchChange(e.target.value)} placeholder="Search ledger by product, SKU or reference..." ref={searchRef} type="text" value={search} />
             <kbd className="absolute right-2 px-1.5 py-0.5 text-[10px] font-mono font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-2xs">⌘K</kbd>
           </div>
         </div>
@@ -47,10 +55,9 @@ export function LedgerHeader() {
         <div className="flex items-center gap-3">
           <button aria-label="Notifications" className="relative p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors" type="button">
             <span className="material-symbols-outlined text-[20px]">notifications</span>
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
           </button>
           <div className="h-5 w-px bg-slate-200" />
-          <div className="flex items-center gap-2 pl-1" onClick={() => navigate(ROUTES.profile)}>
+          <div className="flex items-center gap-2 pl-1 cursor-pointer" onClick={() => navigate(ROUTES.profile)}>
             <div className="text-right hidden sm:block">
               <div className="text-xs font-semibold text-slate-900 leading-tight">{name}</div>
               <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{roleLabel}</div>
@@ -74,14 +81,6 @@ export function LedgerHeader() {
                 </a>
               )
             }
-            if (link.badge) {
-              return (
-                <a className={`${NAV_LINK} flex items-center gap-1.5`} href="#" key={link.label} onClick={(e) => handleNavClick(e, link.to)}>
-                  {link.label}
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-700">{link.badge}</span>
-                </a>
-              )
-            }
             return (
               <a className={NAV_LINK} href="#" key={link.label} onClick={(e) => handleNavClick(e, link.to)}>{link.label}</a>
             )
@@ -89,8 +88,8 @@ export function LedgerHeader() {
         </nav>
         <div className="hidden lg:flex items-center gap-2 shrink-0">
           <span className="text-[11px] font-mono text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs">/ledger</span>
-          <button className="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white border border-slate-200 transition-all flex items-center gap-1">
-            <span className="material-symbols-outlined text-[14px]">download</span>
+          <button className="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white border border-slate-200 transition-all flex items-center gap-1 disabled:opacity-60" disabled={isExporting} onClick={onExport} type="button">
+            <span className={isExporting ? 'material-symbols-outlined text-[14px] animate-spin' : 'material-symbols-outlined text-[14px]'}>{isExporting ? 'progress_activity' : 'download'}</span>
             Export CSV
           </button>
         </div>

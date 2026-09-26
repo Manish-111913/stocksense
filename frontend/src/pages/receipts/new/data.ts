@@ -1,81 +1,80 @@
-// Mock data for the New Receipt screen (WH/IN/00001)
-
-export const RECEIPT_REF = 'WH/IN/00001'
-
-export type ReceiptWorkflowState = 'draft' | 'done'
-
-export interface CatalogProduct {
-  sku: string
-  name: string
-  unit: string
-  description: string
-}
-
-/** Products offered by the "+ Add Product from Catalog" quick-add select */
-export const CATALOG: CatalogProduct[] = [
-  { sku: 'STL-001', name: 'Steel Rod 20mm', unit: 'KG', description: 'Industrial Grade A-36 · High Tensile' },
-  { sku: 'CHR-002', name: 'Ergonomic Office Chair', unit: 'PCS', description: 'Model V4 · Mesh Lumbar Support' },
-  { sku: 'PDU-880', name: 'Rackmount PDU 16A', unit: 'UNITS', description: '0U Vertical · 24-Port C13 Metered' },
-  { sku: 'ALM-102', name: 'Aluminum Ingot Grade 1', unit: 'KG', description: 'Primary Aluminium · 99.7% Purity' },
-]
-
-/** Quick-add option value, as in the original markup: "SKU|Name|Unit" */
-export const catalogOptionValue = (product: CatalogProduct) => `${product.sku}|${product.name}|${product.unit}`
+// Form helpers for the receipt screen (/receipts/new and /receipts/:id)
+import type { ReceiptInput } from '../../../api/receipts.ts'
+import type { DocumentStatus, Receipt } from '../../../api/types.ts'
 
 export interface ReceiptLine {
-  sku: string
+  productId: string
   name: string
-  description: string
+  sku: string
   unit: string
   /** Raw input value, so the field can be cleared while typing */
   qty: string
 }
 
-export const INITIAL_LINES: ReceiptLine[] = [
-  { sku: 'STL-001', name: 'Steel Rod 20mm', description: 'Industrial Grade A-36 · High Tensile', unit: 'KG', qty: '200' },
-  { sku: 'CHR-002', name: 'Ergonomic Office Chair', description: 'Model V4 · Mesh Lumbar Support', unit: 'PCS', qty: '50' },
-]
+/** Values of the receipt form inputs */
+export interface ReceiptForm {
+  supplierId: string
+  warehouseId: string
+  locationId: string
+  /** YYYY-MM-DD */
+  receiptDate: string
+  lines: ReceiptLine[]
+}
 
+/** Option of the supplier / warehouse / location selects */
 export interface SelectOption {
-  value: string
+  id: string
   label: string
 }
 
-export interface Warehouse extends SelectOption {
-  locations: SelectOption[]
+/** Only DRAFT and WAITING receipts can be edited (the backend answers 409 otherwise) */
+export const isEditableStatus = (status: DocumentStatus) => status === 'DRAFT' || status === 'WAITING'
+
+/** Today as YYYY-MM-DD in the user's time zone */
+export function todayIso() {
+  const now = new Date()
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
-export const WAREHOUSES: Warehouse[] = [
-  {
-    value: 'WH-MAIN',
-    label: 'Main Warehouse (West Hub)',
-    locations: [
-      { value: 'LOC-IN-01', label: 'WH/Stock/Inbound Dock A' },
-      { value: 'LOC-IN-02', label: 'WH/Stock/Rack B-04 · Shelf 2' },
-      { value: 'LOC-IN-03', label: 'WH/Stock/Staging Bay 1' },
-    ],
-  },
-  {
-    value: 'WH-EAST',
-    label: 'East Depot (Logistics Center)',
-    locations: [
-      { value: 'LOC-EA-01', label: 'EAST/Stock/Inbound Bay 2' },
-      { value: 'LOC-EA-02', label: 'EAST/Stock/Zone C · Pallet P-11' },
-    ],
-  },
-  {
-    value: 'WH-PROD',
-    label: 'Production Floor Buffer',
-    locations: [{ value: 'LOC-PR-01', label: 'PROD/Buffer/Sub-assembly Bay' }],
-  },
-]
+export const emptyForm = (): ReceiptForm => ({ supplierId: '', warehouseId: '', locationId: '', receiptDate: todayIso(), lines: [] })
 
-export const SUPPLIERS = ['Apex Industrial Metals Ltd.', 'Global Matrix Tech Components', 'OmniCraft Logistics Supplies', 'Precision Hardware Forge']
+export function formFromReceipt(receipt: Receipt): ReceiptForm {
+  return {
+    supplierId: receipt.supplier.id,
+    warehouseId: receipt.warehouse.id,
+    locationId: receipt.location.id,
+    receiptDate: receipt.receiptDate.slice(0, 10),
+    lines: receipt.items.map((item) => ({ productId: item.productId, name: item.productName, sku: item.sku, unit: item.unitOfMeasure, qty: String(Number(item.quantity)) })),
+  }
+}
 
-/** Received quantity of a line, or null when it is not strictly positive */
+/** Payload for createReceipt / updateReceipt (call once every quantity parses) */
+export function toReceiptInput(form: ReceiptForm): ReceiptInput {
+  return {
+    supplierId: form.supplierId,
+    warehouseId: form.warehouseId,
+    locationId: form.locationId,
+    receiptDate: form.receiptDate,
+    items: form.lines.map((line) => ({ productId: line.productId, quantity: parseQty(line.qty) ?? 0 })),
+  }
+}
+
+/** Comparable snapshot of the form, used to detect unsaved changes */
+export function formKey(form: ReceiptForm) {
+  return JSON.stringify([form.supplierId, form.warehouseId, form.locationId, form.receiptDate, form.lines.map((line) => [line.productId, parseQty(line.qty) ?? line.qty])])
+}
+
+/** Received quantity of a line, or null unless it is > 0 with at most 3 decimals */
 export function parseQty(qty: string): number | null {
   const value = Number(qty)
-  return qty.trim() !== '' && Number.isFinite(value) && value > 0 ? value : null
+  if (qty.trim() === '' || !Number.isFinite(value) || value <= 0) return null
+  return Math.round(value * 1000) / 1000 === value ? value : null
+}
+
+/** Adds the record's current value when it is missing from the active options (e.g. deactivated since) */
+export function withCurrent(options: SelectOption[], current: SelectOption | null) {
+  return current && !options.some((option) => option.id === current.id) ? [current, ...options] : options
 }
 
 export const plural = (count: number, singular: string, pluralForm = `${singular}s`) => (count === 1 ? singular : pluralForm)

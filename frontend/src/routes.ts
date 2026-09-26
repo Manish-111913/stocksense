@@ -18,3 +18,4 @@ export const ROUTES = {
 } as const
 
 export const productDetailPath = (productId: string) => `/products/${productId}`
+export const receiptPath = (receiptId: string) => `/receipts/${receiptId}`

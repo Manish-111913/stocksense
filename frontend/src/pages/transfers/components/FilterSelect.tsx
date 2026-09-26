@@ -1,19 +1,18 @@
 import { type SelectOption } from '../data.ts'
 
 interface FilterSelectProps {
-  id?: string
+  id: string
   options: SelectOption[]
-  /** Controlled when given; the warehouse / location / date selects stay uncontrolled like the original */
-  value?: string
-  onChange?: (value: string) => void
+  value: string
+  onChange: (value: string) => void
 }
 
 export function FilterSelect({ id, options, value, onChange }: FilterSelectProps) {
   return (
     <div className="relative">
-      <select className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 text-xs py-1.5 pl-3 pr-8 rounded-lg focus:outline-none focus:bg-white focus:border-indigo-500 cursor-pointer font-medium" id={id} onChange={onChange ? (e) => onChange(e.target.value) : undefined} value={value}>
+      <select className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 text-xs py-1.5 pl-3 pr-8 rounded-lg focus:outline-none focus:bg-white focus:border-indigo-500 cursor-pointer font-medium" id={id} onChange={(e) => onChange(e.target.value)} value={value}>
         {options.map((option) => (
-          <option key={option.label} value={option.value}>
+          <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}

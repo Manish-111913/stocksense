@@ -6,12 +6,14 @@ import {
   IsNotEmpty,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
   Matches,
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../common/pagination.js';
 import { Trim } from '../../common/transforms.js';
@@ -25,6 +27,23 @@ export const STOCK_STATUSES = ['IN_STOCK', 'LOW_STOCK', 'OUT_OF_STOCK'] as const
 export type StockStatus = (typeof STOCK_STATUSES)[number];
 
 const MAX_QUANTITY = 999_999_999_999_999; // NUMERIC(18,3)
+
+/** Opening stock recorded as an applied "Opening stock" adjustment (so it appears in the ledger) */
+export class InitialStockDto {
+  @IsUUID()
+  warehouseId: string;
+
+  /** Must belong to the warehouse */
+  @IsUUID()
+  locationId: string;
+
+  /** @example 100 */
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @IsPositive()
+  @Max(MAX_QUANTITY)
+  quantity: number;
+}
 
 export class CreateProductDto {
   /** @example "Steel Rod 20mm" */
@@ -59,6 +78,12 @@ export class CreateProductDto {
   @Min(0)
   @Max(MAX_QUANTITY)
   reorderLevel?: number;
+
+  /** Optional opening stock at one location */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitialStockDto)
+  initialStock?: InitialStockDto;
 }
 
 /** SKU is the product's permanent code and can't be changed after creation */

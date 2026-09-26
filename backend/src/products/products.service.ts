@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AdjustmentsService } from '../adjustments/adjustments.service.js';
 import { isUniqueViolation } from '../common/prisma-errors.js';
 import { paginated, skipTake, type Paginated } from '../common/pagination.js';
 import { Prisma, type RecordStatus } from '../generated/prisma/client.js';
@@ -66,7 +67,10 @@ const EXPORT_LIMIT = 5000;
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly adjustments: AdjustmentsService,
+  ) {}
 
   async list(query: ProductQueryDto): Promise<Paginated<ProductView>> {
     const where = await this.buildWhere(query);
@@ -139,19 +143,26 @@ export class ProductsService {
     await this.assertActiveCategory(dto.categoryId);
     await this.assertSkuAvailable(dto.sku);
     try {
-      const product = await this.prisma.product.create({
-        data: {
-          name: dto.name,
-          sku: dto.sku,
-          categoryId: dto.categoryId,
-          unitOfMeasure: dto.unitOfMeasure,
-          reorderLevel: dto.reorderLevel ?? 0,
-          createdBy: userId,
-          updatedBy: userId,
-        },
-        include: PRODUCT_INCLUDE,
+      // Product + optional opening stock commit together (stock goes through an adjustment + ledger)
+      const productId = await this.prisma.$transaction(async (tx) => {
+        const product = await tx.product.create({
+          data: {
+            name: dto.name,
+            sku: dto.sku,
+            categoryId: dto.categoryId,
+            unitOfMeasure: dto.unitOfMeasure,
+            reorderLevel: dto.reorderLevel ?? 0,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+          select: { id: true },
+        });
+        if (dto.initialStock) {
+          await this.adjustments.recordOpeningStock(tx, { productId: product.id, ...dto.initialStock }, userId);
+        }
+        return product.id;
       });
-      return toView(product);
+      return this.findOne(productId);
     } catch (error) {
       if (isUniqueViolation(error)) throw new ConflictException(`SKU ${dto.sku} already exists`);
       throw error;
@@ -183,10 +194,18 @@ export class ProductsService {
     return toView(product);
   }
 
-  /** Products are deactivated, never deleted, so history keeps its references */
+  /** Products are deactivated, never deleted, so history keeps its references; one holding stock can't be deactivated */
   async setStatus(id: string, status: RecordStatus, userId: string): Promise<ProductView> {
     const existing = await this.prisma.product.findUnique({ where: { id }, select: { id: true } });
     if (!existing) throw new NotFoundException('Product not found');
+    if (status === 'INACTIVE') {
+      const held = await this.prisma.stock.count({ where: { productId: id, quantity: { gt: 0 } } });
+      if (held > 0) {
+        throw new ConflictException(
+          'This product still has stock. Deliver, transfer or adjust it to zero before deactivating the product.',
+        );
+      }
+    }
     const product = await this.prisma.product.update({
       where: { id },
       data: { status, updatedBy: userId },

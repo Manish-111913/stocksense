@@ -87,6 +87,12 @@ const RECEIPTS_PILL: PillVariant = {
   ],
 }
 
+/** An existing receipt's page: Directory / + New Receipt / this receipt */
+const receiptDocPill = (receiptPath: string): PillVariant => ({
+  ...RECEIPTS_PILL,
+  items: [...RECEIPTS_PILL.items, { icon: 'receipt_long', label: 'Receipt', to: receiptPath }],
+})
+
 const DELIVERIES_PILL: PillVariant = {
   containerClass: PILL_CONTAINER_SM,
   activeClass: PILL_ACTIVE_BORDERED,
@@ -102,7 +108,6 @@ const TRANSFERS_PILL: PillVariant = {
   items: [
     { icon: 'swap_horiz', label: '/transfers', to: ROUTES.transfers },
     { icon: 'add_circle', label: '+ New Transfer', action: 'new-transfer' },
-    { icon: 'info', label: '/transfers/00142', action: 'transfer-detail' },
   ],
 }
 
@@ -112,7 +117,6 @@ const ADJUSTMENTS_PILL: PillVariant = {
   items: [
     { icon: 'tune', label: '/adjustments', to: ROUTES.adjustments },
     { icon: 'add_circle', label: '+ New Adjustment', action: 'new-adjustment' },
-    { icon: 'info', label: '/adjustments/0089', action: 'adjustment-detail' },
   ],
 }
 
@@ -135,7 +139,7 @@ function shellConfigFor(pathname: string): ShellConfig {
     case ROUTES.receipts:
       return { title: 'StockSense — Receipts Management', module: 'receipts', variant: 'classic', pill: RECEIPTS_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-300', toastMs: 3800 }
     case ROUTES.receiptNew:
-      return { title: 'StockSense — Receipts Management', module: 'receipts', variant: 'classic', pill: detailPill(), bodyPadding: 'pb-28', ...CLASSIC_TOAST }
+      return { title: 'StockSense — Receipts Management', module: 'receipts', variant: 'classic', pill: RECEIPTS_PILL, bodyPadding: 'pb-28', ...CLASSIC_TOAST }
     case ROUTES.deliveries:
       return { title: 'StockSense — Delivery Orders', module: 'deliveries', variant: 'classic', pill: DELIVERIES_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-300', toastMs: 3500 }
     case ROUTES.transfers:
@@ -146,6 +150,9 @@ function shellConfigFor(pathname: string): ShellConfig {
     case ROUTES.productNew:
       return { title: 'StockSense — Products Management', module: 'products', variant: 'classic', pill: PRODUCTS_PILL, bodyPadding: 'pb-28', ...CLASSIC_TOAST }
     default:
+      if (pathname.startsWith('/receipts/')) {
+        return { title: 'StockSense — Receipts Management', module: 'receipts', variant: 'classic', pill: receiptDocPill(pathname), bodyPadding: 'pb-28', ...CLASSIC_TOAST }
+      }
       return { title: 'StockSense — Products Management', module: 'products', variant: 'classic', pill: detailPill(pathname), bodyPadding: 'pb-28', ...CLASSIC_TOAST }
   }
 }

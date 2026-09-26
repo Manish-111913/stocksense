@@ -1,142 +1,18 @@
-export type AdjustmentStatus = 'DRAFT' | 'WAITING' | 'READY' | 'DONE' | 'CANCELED'
+import { ApiError } from '../../api/client.ts'
+import type { Adjustment, DocumentStatus } from '../../api/types.ts'
+import { formatQty } from '../products/productsData.ts'
 
-export type StatusFilter = 'ALL' | AdjustmentStatus
-
-/** Deficit (rose), surplus (emerald) or zero (slate) difference badge */
-export type Variance = 'deficit' | 'surplus' | 'zero'
+/** Adjustments only use DRAFT → DONE, or CANCELED */
+export type AdjustmentStatus = Extract<DocumentStatus, 'DRAFT' | 'DONE' | 'CANCELED'>
 
 export const STATUS_LABELS: Record<AdjustmentStatus, string> = {
   DRAFT: 'Draft',
-  WAITING: 'Waiting',
-  READY: 'Ready',
-  DONE: 'Done',
+  DONE: 'Applied',
   CANCELED: 'Canceled',
 }
 
-export interface Adjustment {
-  ref: string
-  txHash: string
-  product: string
-  sku: string
-  skuNote: string
-  warehouse: string
-  /** Value matched by the warehouse filter */
-  warehouseCode: string
-  location: string
-  /** Value matched by the location filter */
-  locationCode: string
-  recordedQty: string
-  countedQty: string
-  difference: string
-  variance: Variance
-  reason: string
-  reasonNote: string
-  /** Reason passed to the quick-apply dialog (the original differs from the table label on one row) */
-  applyReason: string
-  status: AdjustmentStatus
-}
-
-export const ADJUSTMENTS: Adjustment[] = [
-  {
-    ref: 'ADJ-2026-0089',
-    txHash: '0x8f2a...c01',
-    product: 'Steel Rod 20mm',
-    sku: 'STL-001',
-    skuNote: 'Hot Rolled',
-    warehouse: 'Main Warehouse (West)',
-    warehouseCode: 'WH_WEST',
-    location: 'Stock Bay 04-A',
-    locationCode: 'BAY_04A',
-    recordedQty: '100.00 KG',
-    countedQty: '97.00 KG',
-    difference: '-3.00 KG',
-    variance: 'deficit',
-    reason: 'Damaged Stock',
-    reasonNote: 'Bent in racking bay',
-    applyReason: 'Damaged Stock',
-    status: 'READY',
-  },
-  {
-    ref: 'ADJ-2026-0088',
-    txHash: '0x41e0...a99',
-    product: 'Ergonomic Office Chair',
-    sku: 'CHR-002',
-    skuNote: 'High Back Mesh',
-    warehouse: 'East Depot',
-    warehouseCode: 'EAST_DEPOT',
-    location: 'Bin 08-C',
-    locationCode: 'BIN_08C',
-    recordedQty: '45.00 PCS',
-    countedQty: '48.00 PCS',
-    difference: '+3.00 PCS',
-    variance: 'surplus',
-    reason: 'Physical Correction',
-    reasonNote: 'Unregistered receipt pallet',
-    applyReason: 'Physical Count Correction',
-    status: 'READY',
-  },
-  {
-    ref: 'ADJ-2026-0087',
-    txHash: '0x992b...7fa',
-    product: 'Thermal Interface Paste',
-    sku: 'THM-050',
-    skuNote: '50g Compound',
-    warehouse: 'Production Plant B',
-    warehouseCode: 'PLANT_B',
-    location: 'Racking Sector D-12',
-    locationCode: 'SECTOR_D12',
-    recordedQty: '25.00 UNITS',
-    countedQty: '20.00 UNITS',
-    difference: '-5.00 UNITS',
-    variance: 'deficit',
-    reason: 'Missing Stock',
-    reasonNote: 'Line consumption unlogged',
-    applyReason: 'Missing Stock',
-    status: 'READY',
-  },
-  {
-    ref: 'ADJ-2026-0084',
-    txHash: '0x110d...ee8',
-    product: 'Cat6 UTP Cable Spool',
-    sku: 'CBL-CAT6',
-    skuNote: '305m Solid',
-    warehouse: 'Main Warehouse (West)',
-    warehouseCode: 'WH_WEST',
-    location: 'Cold Bin 2',
-    locationCode: 'COLD_BIN_2',
-    recordedQty: '50.00 BOX',
-    countedQty: '50.00 BOX',
-    difference: '0.00 BOX',
-    variance: 'zero',
-    reason: 'Cycle Count',
-    reasonNote: 'Zero variance audited',
-    applyReason: 'Cycle Count',
-    status: 'READY',
-  },
-]
-
-export const DIFFERENCE_BADGE: Record<Variance, string> = {
-  deficit: 'inline-flex items-center px-2 py-0.5 rounded font-mono text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/60',
-  surplus: 'inline-flex items-center px-2 py-0.5 rounded font-mono text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60',
-  zero: 'inline-flex items-center px-2 py-0.5 rounded font-mono text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200',
-}
-
-export interface AdjustmentFilters {
-  search: string
-  status: StatusFilter
-  warehouse: string
-  location: string
-}
-
-// Search covers reference, product, SKU and location (see the search placeholder)
-export function matchesAdjustmentFilters(a: Adjustment, filters: AdjustmentFilters): boolean {
-  const search = filters.search.toLowerCase().trim()
-  const haystack = [a.ref, a.product, a.sku, a.warehouse, a.location].join(' ').toLowerCase()
-  const matchesSearch = !search || haystack.includes(search)
-  const matchesStatus = filters.status === 'ALL' || a.status === filters.status
-  const matchesWh = filters.warehouse === 'ALL' || a.warehouseCode === filters.warehouse
-  const matchesLoc = filters.location === 'ALL' || a.locationCode === filters.location
-  return matchesSearch && matchesStatus && matchesWh && matchesLoc
+export function statusLabel(status: DocumentStatus) {
+  return STATUS_LABELS[status as AdjustmentStatus] ?? status
 }
 
 export interface SelectOption {
@@ -145,129 +21,131 @@ export interface SelectOption {
 }
 
 export const STATUS_OPTIONS: SelectOption[] = [
-  { value: 'READY', label: 'Status: Ready (4)' },
-  { value: 'ALL', label: 'All Statuses (18)' },
-  { value: 'WAITING', label: 'Waiting Review (3)' },
-  { value: 'DONE', label: 'Done (89)' },
-  { value: 'DRAFT', label: 'Draft (2)' },
+  { value: '', label: 'All Statuses' },
+  { value: 'DRAFT', label: STATUS_LABELS.DRAFT },
+  { value: 'DONE', label: STATUS_LABELS.DONE },
+  { value: 'CANCELED', label: STATUS_LABELS.CANCELED },
 ]
 
-export const WAREHOUSE_OPTIONS: SelectOption[] = [
-  { value: 'ALL', label: 'All Warehouses' },
-  { value: 'WH_WEST', label: 'Main Warehouse (West)' },
-  { value: 'EAST_DEPOT', label: 'East Depot' },
-  { value: 'PLANT_B', label: 'Production Plant B' },
+export type DatePreset = '' | 'TODAY' | '7D' | '30D'
+
+export const DATE_OPTIONS: SelectOption[] = [
+  { value: '', label: 'All Time' },
+  { value: 'TODAY', label: 'Today' },
+  { value: '7D', label: 'Last 7 Days' },
+  { value: '30D', label: 'Last 30 Days' },
 ]
 
-export const LOCATION_OPTIONS: SelectOption[] = [
-  { value: 'ALL', label: 'All Locations & Bins' },
-  { value: 'BAY_04A', label: 'Stock Bay 04-A' },
-  { value: 'BIN_08C', label: 'Bin 08-C' },
-  { value: 'SECTOR_D12', label: 'Racking Sector D-12' },
-]
+/** Local calendar day as YYYY-MM-DD */
+function isoDay(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
 
-// The original options carry no value attribute, so their value is their text
-export const DATE_OPTIONS: SelectOption[] = ['Last 30 Days', 'Today', 'This Week', 'Current Fiscal Quarter'].map((label) => ({ value: label, label }))
+/** dateFrom / dateTo filters for a date preset (both undefined for "All Time") */
+export function dateRangeFor(preset: DatePreset): { dateFrom?: string; dateTo?: string } {
+  if (!preset) return {}
+  const today = new Date()
+  const from = new Date(today)
+  if (preset === '7D') from.setDate(from.getDate() - 6)
+  if (preset === '30D') from.setDate(from.getDate() - 29)
+  return { dateFrom: isoDay(from), dateTo: isoDay(today) }
+}
 
-export const DEFAULT_DATE = 'Last 30 Days'
+/** Common reasons offered in the create / edit form ("Other" switches to free text) */
+export const REASON_PRESETS = ['Physical Count Correction', 'Cycle Count', 'Damaged Stock', 'Missing / Lost Stock', 'Expired Stock', 'Found Stock', 'Data Entry Error']
+
+export const OTHER_REASON = '__OTHER__'
+
+/** Signed quantity: "+3", "−3", "0" */
+export function signedQty(value: number) {
+  if (value > 0) return `+${formatQty(value)}`
+  if (value < 0) return `−${formatQty(Math.abs(value))}`
+  return '0'
+}
+
+export function formatDateTime(value: string) {
+  return new Date(value).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+const BADGE_BASE = 'inline-flex items-center px-2 py-0.5 rounded font-mono text-[11px] font-semibold'
+
+/** Difference badge: deficit (rose), surplus (emerald) or zero (slate) */
+export function differenceBadgeClass(difference: number) {
+  if (difference < 0) return `${BADGE_BASE} bg-rose-50 text-rose-700 border border-rose-200/60`
+  if (difference > 0) return `${BADGE_BASE} bg-emerald-50 text-emerald-700 border border-emerald-200/60`
+  return `${BADGE_BASE} bg-slate-100 text-slate-700 border border-slate-200`
+}
+
+export function differenceTextClass(difference: number) {
+  if (difference < 0) return 'text-rose-600'
+  if (difference > 0) return 'text-emerald-700'
+  return 'text-slate-700'
+}
+
+/** Apply failed because stock moved since the draft was recorded (409 STALE_STOCK) */
+export function isStaleStockError(err: unknown) {
+  return err instanceof ApiError && err.code === 'STALE_STOCK'
+}
+
+export function applyToastSubtitle(a: Adjustment) {
+  return `${a.reference}: stock of ${a.product.name} at ${a.warehouse.code} / ${a.location.name} set to ${formatQty(a.physicalQuantity)} ${a.product.unitOfMeasure} (${signedQty(a.difference)}).`
+}
+
+// KPI summary cards: the selected card is highlighted (indigo ring + top bar)
+export const KPI_CARD = 'bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs hover:border-slate-300 transition-all cursor-pointer'
+export const KPI_CARD_ELEVATED = 'bg-white rounded-xl border border-indigo-500 ring-2 ring-indigo-500/20 p-5 shadow-md transition-all cursor-pointer relative overflow-hidden'
+
+/** '' is the "Total" card (clears the status filter) */
+export type KpiKey = AdjustmentStatus | ''
 
 export interface KpiCard {
-  status: AdjustmentStatus
-  /** The highlighted "Ready" card: indigo ring, top bar and check icon */
-  elevated: boolean
+  key: KpiKey
   label: string
   labelClass: string
   badge: string
   badgeClass: string
-  count: string
-  countClass: string
   unit: string
   caption: string
-  captionClass: string
 }
 
-export const KPI_CARD = 'bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs hover:border-slate-300 transition-all cursor-pointer'
-export const KPI_CARD_ELEVATED = 'bg-white rounded-xl border border-indigo-500 ring-2 ring-indigo-500/20 p-5 shadow-md transition-all cursor-pointer relative overflow-hidden'
-
-const KPI_COUNT = 'text-2xl font-bold font-mono text-slate-900'
-const KPI_CAPTION = 'mt-2 text-xs text-slate-500 truncate'
+const KPI_LABEL = 'text-[11px] font-semibold uppercase tracking-wider'
 
 export const KPI_CARDS: KpiCard[] = [
   {
-    status: 'DRAFT',
-    elevated: false,
+    key: 'DRAFT',
     label: 'Draft',
-    labelClass: 'text-[11px] font-semibold uppercase tracking-wider text-slate-500',
-    badge: 'Awaiting',
-    badgeClass: 'px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-600',
-    count: '2',
-    countClass: KPI_COUNT,
-    unit: 'items',
-    caption: 'Uncounted draft sheets',
-    captionClass: KPI_CAPTION,
-  },
-  {
-    status: 'WAITING',
-    elevated: false,
-    label: 'Waiting',
-    labelClass: 'text-[11px] font-semibold uppercase tracking-wider text-amber-700',
-    badge: 'In Review',
+    labelClass: `${KPI_LABEL} text-amber-700`,
+    badge: 'To Apply',
     badgeClass: 'px-1.5 py-0.2 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60',
-    count: '3',
-    countClass: KPI_COUNT,
-    unit: 'items',
-    caption: 'Second-verifier count',
-    captionClass: KPI_CAPTION,
+    unit: 'drafts',
+    caption: 'Counted, stock not changed yet',
   },
   {
-    status: 'READY',
-    elevated: true,
-    label: 'Ready',
-    labelClass: 'text-[11px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1',
-    badge: 'Validate Now',
-    badgeClass: 'px-1.5 py-0.2 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80',
-    count: '4',
-    countClass: 'text-2xl font-bold font-mono text-indigo-700',
-    unit: 'to apply',
-    caption: 'Reconciliation verified',
-    captionClass: 'mt-2 text-xs text-indigo-900 font-medium truncate',
-  },
-  {
-    status: 'DONE',
-    elevated: false,
-    label: 'Done',
-    labelClass: 'text-[11px] font-semibold uppercase tracking-wider text-emerald-700',
+    key: 'DONE',
+    label: 'Applied',
+    labelClass: `${KPI_LABEL} text-emerald-700`,
     badge: 'Posted',
     badgeClass: 'px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60',
-    count: '89',
-    countClass: KPI_COUNT,
     unit: 'applied',
-    caption: 'Atomic ledger synced',
-    captionClass: KPI_CAPTION,
+    caption: 'Stock set to the physical count',
   },
   {
-    status: 'CANCELED',
-    elevated: false,
+    key: 'CANCELED',
     label: 'Canceled',
-    labelClass: 'text-[11px] font-semibold uppercase tracking-wider text-slate-500',
+    labelClass: `${KPI_LABEL} text-slate-500`,
     badge: 'Voided',
     badgeClass: 'px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-600',
-    count: '2',
-    countClass: KPI_COUNT,
-    unit: 'voided',
-    caption: 'Discrepancy canceled',
-    captionClass: KPI_CAPTION,
+    unit: 'canceled',
+    caption: 'No ledger movement',
+  },
+  {
+    key: '',
+    label: 'Total',
+    labelClass: `${KPI_LABEL} text-indigo-700`,
+    badge: 'All',
+    badgeClass: 'px-1.5 py-0.2 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80',
+    unit: 'adjustments',
+    caption: 'Every adjustment recorded',
   },
 ]
-
-function csvCell(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
-}
-
-export function buildAdjustmentsCsv(rows: Adjustment[]): string {
-  const header = ['Reference', 'Product', 'SKU', 'Warehouse', 'Location', 'Recorded Qty', 'Counted Qty', 'Difference', 'Reason', 'Status']
-  const lines = rows.map((a) =>
-    [a.ref, a.product, a.sku, a.warehouse, a.location, a.recordedQty, a.countedQty, a.difference, a.reason, STATUS_LABELS[a.status]].map(csvCell).join(','),
-  )
-  return [header.join(','), ...lines].join('\n')
-}

@@ -3,17 +3,16 @@ import { ROUTES } from '../../routes.ts'
 export type NavTab = {
   label: string
   to: string
-  badge?: string
 }
 
 // Sub-navigation tabs before the active "Profile & Account" tab
 export const NAV_TABS: NavTab[] = [
   { label: 'Dashboard', to: ROUTES.dashboard },
   { label: 'Products', to: ROUTES.products },
-  { label: 'Receipts', to: ROUTES.receipts, badge: '12' },
-  { label: 'Deliveries', to: ROUTES.deliveries, badge: '8' },
-  { label: 'Transfers', to: ROUTES.transfers, badge: '24' },
-  { label: 'Adjustments', to: ROUTES.adjustments, badge: '18' },
+  { label: 'Receipts', to: ROUTES.receipts },
+  { label: 'Deliveries', to: ROUTES.deliveries },
+  { label: 'Transfers', to: ROUTES.transfers },
+  { label: 'Adjustments', to: ROUTES.adjustments },
   { label: 'Move History', to: ROUTES.moveHistory },
   { label: 'Warehouse', to: ROUTES.warehouse },
 ]
@@ -46,63 +45,8 @@ export const CHEVRON_DOWN_PATH = 'M19 9l-7 7-7-7'
 export const SEARCH_PATH = 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'
 export const MONITOR_PATH = 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'
 export const CHECK_PATH = 'M5 13l4 4L19 7'
+export const CLOCK_PATH = 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
 export const LOGOUT_PATH = 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1'
-
-export const ACTIVE_FILTER_PILLS: string[] = ['Status: Verified Active', 'Role: Inventory Admin', 'Node: Bhiwandi Gateway']
-
-export type SessionAttribute = {
-  title: string
-  value: string
-  status: string
-  statusClassName: string
-  dotClassName: string
-  iconBoxClassName: string
-  iconPath: string
-  badge: string
-  badgeClassName: string
-  rowClassName: string
-}
-
-const ATTR_ROW_DIVIDED = 'flex items-center justify-between pb-2.5 border-b border-slate-200/70'
-
-export const SESSION_ATTRIBUTES: SessionAttribute[] = [
-  {
-    title: 'Client Environment',
-    value: 'macOS Chrome 128.0',
-    status: 'Active · Secure TLS',
-    statusClassName: 'text-[10px] text-emerald-600 font-medium mt-0.5 flex items-center gap-1',
-    dotClassName: 'w-1.5 h-1.5 rounded-full bg-emerald-500',
-    iconBoxClassName: 'w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center text-brand-600 shrink-0 mt-0.5 shadow-sm',
-    iconPath: MONITOR_PATH,
-    badge: 'AES-256',
-    badgeClassName: 'px-2 py-0.5 rounded bg-brand-100 text-brand-800 font-mono font-semibold text-xs shrink-0',
-    rowClassName: ATTR_ROW_DIVIDED,
-  },
-  {
-    title: 'IP Address & Gateway',
-    value: '103.21.144.92 (Bhiwandi)',
-    status: 'Verified Node',
-    statusClassName: 'text-[10px] text-emerald-600 font-medium mt-0.5 flex items-center gap-1',
-    dotClassName: 'w-1.5 h-1.5 rounded-full bg-emerald-500',
-    iconBoxClassName: 'w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center text-blue-600 shrink-0 mt-0.5 shadow-sm',
-    iconPath: 'M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-    badge: 'Static IP',
-    badgeClassName: 'px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-semibold text-xs shrink-0',
-    rowClassName: ATTR_ROW_DIVIDED,
-  },
-  {
-    title: 'Authentication Authority',
-    value: 'Enterprise SSO & Token',
-    status: 'Hardware Key Bound',
-    statusClassName: 'text-[10px] text-brand-700 font-medium mt-0.5 flex items-center gap-1',
-    dotClassName: 'w-1.5 h-1.5 rounded-full bg-brand-600',
-    iconBoxClassName: 'w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center text-indigo-700 shrink-0 mt-0.5 shadow-sm',
-    iconPath: LOCK_PATH,
-    badge: 'SSO-OK',
-    badgeClassName: 'px-2 py-0.5 rounded bg-indigo-100 text-brand-800 font-mono font-semibold text-xs shrink-0',
-    rowClassName: 'flex items-center justify-between',
-  },
-]
 
 export type ToastState = {
   visible: boolean
@@ -113,7 +57,72 @@ export type ToastState = {
 
 export const INITIAL_TOAST: ToastState = {
   visible: false,
-  title: 'Success',
-  message: 'Action performed successfully.',
+  title: '',
+  message: '',
   isError: false,
+}
+
+// Mirrors the backend rules (users.dto.ts / auth.dto.ts) and the Sign Up page
+export const NAME_MIN_LENGTH = 2
+export const NAME_MAX_LENGTH = 150
+export const PHONE_MAX_LENGTH = 30
+export const PHONE_PATTERN = /^[0-9+()\-\s]*$/
+export const PASSWORD_MIN_LENGTH = 8
+export const PASSWORD_MAX_LENGTH = 128
+
+/** "Jane Doe" -> "JD", "jane" -> "J" */
+export function initialsOf(fullName: string | undefined) {
+  const words = (fullName ?? '').trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  const first = words[0][0]
+  const last = words.length > 1 ? words[words.length - 1][0] : ''
+  return `${first}${last}`.toUpperCase()
+}
+
+export function formatDate(iso: string | null | undefined) {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+export function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+/** How long the account has existed, e.g. "8 months", "12 days", "today" */
+export function tenureOf(iso: string | null | undefined) {
+  if (!iso) return ''
+  const created = new Date(iso)
+  if (Number.isNaN(created.getTime())) return ''
+  const now = new Date()
+  const days = Math.floor((now.getTime() - created.getTime()) / 86_400_000)
+  if (days < 1) return 'joined today'
+  if (days < 31) return `${days} ${days === 1 ? 'day' : 'days'}`
+  const months = (now.getFullYear() - created.getFullYear()) * 12 + now.getMonth() - created.getMonth() - (now.getDate() < created.getDate() ? 1 : 0)
+  if (months < 12) return `${Math.max(months, 1)} ${months <= 1 ? 'month' : 'months'}`
+  const years = Math.floor(months / 12)
+  return `${years} ${years === 1 ? 'year' : 'years'}`
+}
+
+/** Short browser / OS summary of this device from the user agent, e.g. "Chrome on Windows" */
+export function describeThisDevice() {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent
+  let browser = 'Browser'
+  if (/Edg\//.test(ua)) browser = 'Edge'
+  else if (/OPR\/|Opera/.test(ua)) browser = 'Opera'
+  else if (/Firefox\//.test(ua)) browser = 'Firefox'
+  else if (/Chrome\//.test(ua)) browser = 'Chrome'
+  else if (/Safari\//.test(ua)) browser = 'Safari'
+  let os = ''
+  if (/Windows/.test(ua)) os = 'Windows'
+  else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS'
+  else if (/Android/.test(ua)) os = 'Android'
+  else if (/Mac OS X|Macintosh/.test(ua)) os = 'macOS'
+  else if (/CrOS/.test(ua)) os = 'ChromeOS'
+  else if (/Linux/.test(ua)) os = 'Linux'
+  return { browser, os, label: os ? `${browser} on ${os}` : browser }
 }

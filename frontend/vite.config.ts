@@ -5,9 +5,10 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Same-origin API calls in development: /api/* goes to the NestJS backend
+    // Same-origin API calls in development: /api/* goes to the NestJS backend.
+    // API_PROXY_TARGET lets an isolated test backend be used instead.
     proxy: {
-      '/api': 'http://localhost:4100',
+      '/api': process.env.API_PROXY_TARGET ?? 'http://localhost:4100',
     },
   },
 })

@@ -5,10 +5,13 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
 export class ApiError extends Error {
   readonly status: number
+  /** Machine-readable error from the backend, e.g. INSUFFICIENT_STOCK or STALE_STOCK */
+  readonly code?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
@@ -34,15 +37,17 @@ function buildUrl(path: string, query?: Query) {
 /** NestJS errors carry `message` as a string or a list of validation messages */
 async function toApiError(res: Response): Promise<ApiError> {
   let message = `Request failed (${res.status})`
+  let code: string | undefined
   try {
-    const body = (await res.json()) as { message?: string | string[] }
+    const body = (await res.json()) as { message?: string | string[]; error?: string }
+    if (body.error && /^[A-Z][A-Z_]+$/.test(body.error)) code = body.error
     if (Array.isArray(body.message)) message = body.message[0] ?? message
     else if (body.message) message = body.message
   } catch {
     // Non-JSON error body
   }
   if (res.status === 0 || res.status >= 500) message = 'Something went wrong on our side. Please try again.'
-  return new ApiError(res.status, message)
+  return new ApiError(res.status, message, code)
 }
 
 // One refresh at a time, shared by all requests that hit a 401 together

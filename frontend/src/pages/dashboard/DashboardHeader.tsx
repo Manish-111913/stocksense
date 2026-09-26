@@ -1,15 +1,43 @@
-import { type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { useUserBadge } from '../../auth/useAuth.ts'
+import { ROUTES } from '../../routes.ts'
 import { HEADER_NAV_LINKS } from './data.ts'
 
-export function DashboardHeader() {
+interface DashboardHeaderProps {
+  /** Low + out-of-stock products; shows the alert dot when above zero */
+  alertCount: number
+  onAlertsClick: () => void
+  /** Header search filters the operations ledger */
+  onSearch: (value: string) => void
+}
+
+export function DashboardHeader({ alertCount, onAlertsClick, onSearch }: DashboardHeaderProps) {
   const { name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
+  const searchRef = useRef<HTMLInputElement>(null)
+  const [query, setQuery] = useState('')
+
+  // ⌘K / Ctrl+K focuses the header search
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        searchRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to?: string) {
     event.preventDefault()
     if (to) navigate(to)
+  }
+
+  function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    onSearch(query.trim())
   }
 
   return (
@@ -22,7 +50,6 @@ export function DashboardHeader() {
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <span className="font-headline-sm text-headline-sm text-on-surface font-bold tracking-tight">StockSense</span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-surface-container text-primary font-mono">v2.4</span>
             </div>
           </div>
         </div>
@@ -38,16 +65,16 @@ export function DashboardHeader() {
         </nav>
       </div>
       <div className="flex items-center gap-space-base">
-        <div className="relative hidden sm:flex items-center w-64">
+        <form className="relative hidden sm:flex items-center w-64" onSubmit={handleSearch} role="search">
           <span className="material-symbols-outlined absolute left-3 text-[18px] text-on-surface-variant">search</span>
-          <input className="w-full bg-surface-container-low text-on-surface placeholder:text-on-surface-variant font-body-sm text-body-sm pl-9 pr-12 py-1.5 rounded-xl outline-none focus:bg-surface-container transition-all border border-transparent focus:border-surface-container-high" placeholder="Search inventory..." type="text" />
+          <input className="w-full bg-surface-container-low text-on-surface placeholder:text-on-surface-variant font-body-sm text-body-sm pl-9 pr-12 py-1.5 rounded-xl outline-none focus:bg-surface-container transition-all border border-transparent focus:border-surface-container-high" onChange={(e) => setQuery(e.target.value)} placeholder="Search operations..." ref={searchRef} type="text" value={query} />
           <kbd className="absolute right-2 px-1.5 py-0.5 rounded text-[10px] font-mono bg-surface-container text-on-surface-variant font-medium">⌘K</kbd>
-        </div>
-        <button className="relative p-2 rounded-xl text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" title="Notifications" type="button">
+        </form>
+        <button className="relative p-2 rounded-xl text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" onClick={onAlertsClick} title={alertCount > 0 ? `${alertCount} stock ${alertCount === 1 ? 'alert' : 'alerts'}` : 'No stock alerts'} type="button">
           <span className="material-symbols-outlined text-[20px]">notifications</span>
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error" />
+          {alertCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error" />}
         </button>
-        <div className="flex items-center gap-space-sm pl-2 cursor-pointer group rounded-xl p-1 hover:bg-surface-container-low transition-colors">
+        <div className="flex items-center gap-space-sm pl-2 cursor-pointer group rounded-xl p-1 hover:bg-surface-container-low transition-colors" onClick={() => navigate(ROUTES.profile)} title="Profile">
           <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-semibold text-body-sm shadow-sm">{initial}</div>
           <div className="hidden lg:flex flex-col text-left">
             <span className="font-label-md text-label-md text-on-surface font-semibold leading-tight">{name}</span>

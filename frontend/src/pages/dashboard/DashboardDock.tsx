@@ -1,9 +1,15 @@
 import { type MouseEvent } from 'react'
 import { useNavigate } from 'react-router'
+import type { DashboardSummary } from '../../api/types.ts'
 import { DOCK_ITEMS } from './data.ts'
 
+interface DashboardDockProps {
+  /** Pending receipt / delivery counts for the badges (none until loaded) */
+  summary: DashboardSummary | null
+}
+
 // Pinned floating bottom navigation dock
-export function DashboardDock() {
+export function DashboardDock({ summary }: DashboardDockProps) {
   const navigate = useNavigate()
 
   function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to?: string) {
@@ -18,22 +24,21 @@ export function DashboardDock() {
           <span className="material-symbols-outlined text-[20px]">dashboard</span>
           <span className="font-label-sm text-[10px] leading-tight font-semibold">Dashboard</span>
         </a>
-        {DOCK_ITEMS.map((item) => (
-          <a
-            className={item.badge ? 'relative flex flex-col items-center px-3 py-1 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all' : 'flex flex-col items-center px-3 py-1 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all'}
-            href="#"
-            key={item.label}
-            onClick={(e) => handleNavClick(e, item.to)}
-          >
-            {item.badge && <span className={item.badgeClassName}>{item.badge}</span>}
-            <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-            <span className="font-label-sm text-[10px] leading-tight">{item.label}</span>
-          </a>
-        ))}
-        <div className="w-px h-6 bg-surface-container-high mx-1" />
-        <button className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-all" title="Inventory AI Assistant" type="button">
-          <span className="material-symbols-outlined text-[18px]">smart_toy</span>
-        </button>
+        {DOCK_ITEMS.map((item) => {
+          const count = item.badgeKey && summary ? summary[item.badgeKey] : 0
+          return (
+            <a
+              className={count > 0 ? 'relative flex flex-col items-center px-3 py-1 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all' : 'flex flex-col items-center px-3 py-1 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all'}
+              href="#"
+              key={item.label}
+              onClick={(e) => handleNavClick(e, item.to)}
+            >
+              {count > 0 && <span className={item.badgeClassName}>{count > 99 ? '99+' : count}</span>}
+              <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+              <span className="font-label-sm text-[10px] leading-tight">{item.label}</span>
+            </a>
+          )
+        })}
       </div>
     </div>
   )

@@ -1,8 +1,9 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { ApiError } from '../../api/client.ts'
 import { createCategory, createProduct, listCategories } from '../../api/products.ts'
-import type { Category } from '../../api/types.ts'
+import type { Category, Location, Warehouse } from '../../api/types.ts'
+import { listLocations, listWarehouses } from '../../api/warehouses.ts'
 import { useToast } from '../../context/toast.ts'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
 import { productDetailPath, ROUTES } from '../../routes.ts'
@@ -14,6 +15,20 @@ const isValidSku = (value: string) => /^[A-Z0-9][A-Z0-9._/-]*$/i.test(value.trim
 
 // validateNonNegative: negative quantities snap back to 0
 const nonNegative = (event: ChangeEvent<HTMLInputElement>) => (Number(event.target.value) < 0 ? '0' : event.target.value)
+
+/** Inline error for the opening stock quantity (empty or 0 = no opening stock) */
+function initialStockError(value: string): string | null {
+  const text = value.trim()
+  if (!text) return null
+  const qty = Number(text)
+  if (!Number.isFinite(qty)) return 'Enter a valid quantity.'
+  if (qty < 0) return 'Initial stock cannot be negative.'
+  if (Math.abs(qty * 1000 - Math.round(qty * 1000)) > 1e-6) return 'Use at most 3 decimal places.'
+  return null
+}
+
+const SELECT_CLASS =
+  'appearance-none w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer transition-all disabled:cursor-not-allowed disabled:opacity-60'
 
 export default function AddProductPage() {
   useDocumentTitle('StockSense — Products Management')
@@ -45,9 +60,65 @@ export default function AddProductPage() {
   const [newCategoryError, setNewCategoryError] = useState<string | null>(null)
   const [isCreatingCategory, setIsCreatingCategory] = useState(false)
 
+  // Opening stock: quantity + where it sits (both selects required only when quantity > 0)
+  const [initialStock, setInitialStock] = useState('')
+  const [initialStockErr, setInitialStockErr] = useState<string | null>(null)
+  const [warehouseId, setWarehouseId] = useState('')
+  const [warehouseError, setWarehouseError] = useState<string | null>(null)
+  const [locationId, setLocationId] = useState('')
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+  const [warehousesReload, setWarehousesReload] = useState(0)
+  const [warehousesSettled, setWarehousesSettled] = useState<{ key: number; state: 'ready' | 'error' } | null>(null)
+  const warehousesState = warehousesSettled?.key === warehousesReload ? warehousesSettled.state : 'loading'
+  const [locationsReload, setLocationsReload] = useState(0)
+  const locationsKey = `${warehouseId}:${locationsReload}`
+  const [locationsSettled, setLocationsSettled] = useState<{ key: string; state: 'ready' | 'error'; items: Location[] } | null>(null)
+  const locationsState = !warehouseId ? 'idle' : locationsSettled?.key === locationsKey ? locationsSettled.state : 'loading'
+  const locations = locationsState === 'ready' && locationsSettled ? locationsSettled.items : []
+  // Ignore a stale pick (e.g. the warehouse changed or its list was refreshed)
+  const selectedLocationId = locations.some((item) => item.id === locationId) ? locationId : ''
+  const noWarehouses = warehousesState === 'ready' && warehouses.length === 0
+  const stockQty = initialStockError(initialStock) ? 0 : Number(initialStock.trim() || 0)
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    listWarehouses({ status: 'ACTIVE', limit: 100 })
+      .then((res) => {
+        if (cancelled) return
+        setWarehouses(res.data)
+        setWarehouseId((current) => (res.data.some((item) => item.id === current) ? current : res.data.length === 1 ? res.data[0].id : ''))
+        setWarehousesSettled({ key: warehousesReload, state: 'ready' })
+      })
+      .catch(() => {
+        if (!cancelled) setWarehousesSettled({ key: warehousesReload, state: 'error' })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [warehousesReload])
+
+  useEffect(() => {
+    if (!warehouseId) return
+    let cancelled = false
+    const key = `${warehouseId}:${locationsReload}`
+    listLocations({ warehouseId, status: 'ACTIVE' })
+      .then((res) => {
+        if (cancelled) return
+        setLocationsSettled({ key, state: 'ready', items: res })
+        setLocationId((current) => (res.some((item) => item.id === current) ? current : res.length === 1 ? res[0].id : ''))
+      })
+      .catch(() => {
+        if (!cancelled) setLocationsSettled({ key, state: 'error', items: [] })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [warehouseId, locationsReload])
 
   useEffect(() => {
     let cancelled = false
@@ -104,7 +175,7 @@ export default function AddProductPage() {
 
   // Handle Unsaved Changes Guard
   function requestReturnToList() {
-    if (name.trim() || sku.trim() || category || reorderLevel.trim()) {
+    if (name.trim() || sku.trim() || category || reorderLevel.trim() || initialStock.trim()) {
       setShowUnsavedModal(true)
     } else {
       navigate(ROUTES.products)
@@ -131,7 +202,15 @@ export default function AddProductPage() {
     setSkuValid(skuOk)
     setCategoryError(category ? null : 'Please choose a product category.')
 
-    if (!nameOk || !skuOk || !category) return
+    const qtyErr = initialStockError(initialStock)
+    setInitialStockErr(qtyErr)
+    const withStock = !qtyErr && stockQty > 0
+    const whErr = withStock && !warehouseId ? 'Please choose a warehouse.' : null
+    const locErr = withStock && !selectedLocationId ? 'Please choose a location.' : null
+    setWarehouseError(whErr)
+    setLocationError(locErr)
+
+    if (!nameOk || !skuOk || !category || qtyErr || whErr || locErr) return
 
     setIsSubmitting(true)
     try {
@@ -141,12 +220,18 @@ export default function AddProductPage() {
         categoryId: category,
         unitOfMeasure: uom,
         ...(reorderLevel.trim() ? { reorderLevel: Number(reorderLevel) } : {}),
+        ...(withStock ? { initialStock: { warehouseId, locationId: selectedLocationId, quantity: stockQty } } : {}),
       })
       showToast('Product created successfully', `Added SKU ${product.sku} to catalog.`)
       navigate(productDetailPath(product.id))
     } catch (err) {
       const message = errorMessage(err, 'Could not create the product. Please try again.')
-      if (err instanceof ApiError && (err.status === 409 || /sku/i.test(message))) {
+      if (withStock && err instanceof ApiError && err.status !== 409 && /warehouse|location/i.test(message)) {
+        // Opening stock rejected (nothing was created): show it and refresh the pickers
+        setFormError(message)
+        setWarehousesReload((key) => key + 1)
+        setLocationsReload((key) => key + 1)
+      } else if (err instanceof ApiError && (err.status === 409 || /sku/i.test(message))) {
         setSkuValid(false)
         setSkuError(message)
       } else if (err instanceof ApiError && /category/i.test(message)) {
@@ -402,7 +487,7 @@ export default function AddProductPage() {
                   </span>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900">Inventory Settings</h2>
-                    <p className="text-[11px] text-slate-400">Configure the reorder threshold for this product.</p>
+                    <p className="text-[11px] text-slate-400">Opening stock and the reorder threshold for this product.</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -412,8 +497,122 @@ export default function AddProductPage() {
                       <label className="block text-xs font-semibold text-slate-700" htmlFor="newProdInitialStock">Initial Stock</label>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200/80 text-slate-600">(Optional)</span>
                     </div>
-                    <input className="w-full px-3.5 py-2 text-xs font-mono bg-slate-100 border border-slate-200 rounded-lg text-slate-400 placeholder-slate-400 cursor-not-allowed" disabled id="newProdInitialStock" placeholder="0" type="number" />
-                    <p className="text-[11px] text-slate-500 leading-tight">Opening stock is recorded through inventory operations (receipts or adjustments) once warehouses and locations are set up.</p>
+                    <input
+                      className="w-full px-3.5 py-2 text-xs font-mono bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      disabled={warehousesState !== 'ready' || noWarehouses}
+                      id="newProdInitialStock"
+                      min="0"
+                      onChange={(e) => {
+                        setInitialStock(e.target.value)
+                        setInitialStockErr(initialStockError(e.target.value))
+                        setWarehouseError(null)
+                        setLocationError(null)
+                      }}
+                      placeholder="0"
+                      step="any"
+                      type="number"
+                      value={initialStock}
+                    />
+                    {initialStockErr && (
+                      <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1" id="initialStockErrorMsg">
+                        <span className="material-symbols-outlined text-[13px]">error</span> {initialStockErr}
+                      </p>
+                    )}
+                    {noWarehouses ? (
+                      <p className="text-[11px] text-slate-500 leading-tight">
+                        No active warehouses yet.{' '}
+                        <Link className="font-semibold text-indigo-600 hover:text-indigo-800 underline" to={ROUTES.warehouse}>
+                          Set up a warehouse
+                        </Link>{' '}
+                        to record opening stock.
+                      </p>
+                    ) : warehousesState === 'error' ? (
+                      <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[13px]">error</span> Could not load warehouses.
+                        <button className="font-semibold underline hover:text-rose-700" onClick={() => setWarehousesReload((key) => key + 1)} type="button">
+                          Retry
+                        </button>
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1" htmlFor="newProdStockWarehouse">
+                            Warehouse {stockQty > 0 && <span className="text-rose-500">*</span>}
+                          </label>
+                          <div className="relative">
+                            <select
+                              className={SELECT_CLASS}
+                              disabled={warehousesState !== 'ready'}
+                              id="newProdStockWarehouse"
+                              onChange={(e) => {
+                                setWarehouseId(e.target.value)
+                                setLocationId('')
+                                setWarehouseError(null)
+                                setLocationError(null)
+                              }}
+                              value={warehouseId}
+                            >
+                              <option disabled value="">
+                                {warehousesState === 'loading' ? 'Loading...' : 'Select warehouse...'}
+                              </option>
+                              {warehouses.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.name}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="material-symbols-outlined pointer-events-none absolute right-3 top-2.5 text-slate-400 text-base">unfold_more</span>
+                          </div>
+                          {warehouseError && (
+                            <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1" id="stockWarehouseErrorMsg">
+                              <span className="material-symbols-outlined text-[13px]">error</span> {warehouseError}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1" htmlFor="newProdStockLocation">
+                            Location {stockQty > 0 && <span className="text-rose-500">*</span>}
+                          </label>
+                          <div className="relative">
+                            <select
+                              className={SELECT_CLASS}
+                              disabled={locationsState !== 'ready' || locations.length === 0}
+                              id="newProdStockLocation"
+                              onChange={(e) => {
+                                setLocationId(e.target.value)
+                                setLocationError(null)
+                              }}
+                              value={selectedLocationId}
+                            >
+                              <option disabled value="">
+                                {locationsState === 'idle' ? 'Pick a warehouse' : locationsState === 'loading' ? 'Loading...' : locations.length === 0 ? 'No locations' : 'Select location...'}
+                              </option>
+                              {locations.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.name}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="material-symbols-outlined pointer-events-none absolute right-3 top-2.5 text-slate-400 text-base">unfold_more</span>
+                          </div>
+                          {locationsState === 'error' && (
+                            <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[13px]">error</span> Could not load.
+                              <button className="font-semibold underline hover:text-rose-700" onClick={() => setLocationsReload((key) => key + 1)} type="button">
+                                Retry
+                              </button>
+                            </p>
+                          )}
+                          {locationsState === 'ready' && locations.length === 0 && <p className="text-[11px] text-slate-500 mt-1">This warehouse has no active locations.</p>}
+                          {locationError && (
+                            <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1" id="stockLocationErrorMsg">
+                              <span className="material-symbols-outlined text-[13px]">error</span> {locationError}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-500 leading-tight">{"Recorded as an 'Opening stock' adjustment in the stock ledger."}</p>
                   </div>
                   {/* Reorder Level */}
                   <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/70 space-y-1.5">

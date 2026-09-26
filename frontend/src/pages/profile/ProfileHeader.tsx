@@ -5,11 +5,10 @@ import { ROUTES } from '../../routes.ts'
 import { NAV_TABS, SEARCH_PATH, USER_PATH } from './data.ts'
 
 const TAB = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-colors'
-const TAB_WITH_BADGE = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-colors flex items-center gap-1.5'
 
 // macOS window chrome header with search, user actions and the module tab bar
 export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) {
-  const { name, initial, roleLabel } = useUserBadge()
+  const { user, name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
 
   function go(event: MouseEvent<HTMLAnchorElement>, to: string) {
@@ -50,7 +49,6 @@ export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) 
         <div className="flex items-center gap-3">
           <button aria-label="Notifications" className="relative p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors" type="button">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
           </button>
           <div className="h-5 w-px bg-slate-200" />
           <div className="flex items-center gap-2 pl-1">
@@ -58,7 +56,7 @@ export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) 
               <div className="text-xs font-semibold text-slate-900 leading-tight">{name}</div>
               <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{roleLabel}</div>
             </div>
-            <div className="w-8 h-8 rounded-full bg-brand-600 text-white font-semibold flex items-center justify-center text-xs shadow-sm">
+            <div className="w-8 h-8 rounded-full bg-brand-600 text-white font-semibold flex items-center justify-center text-xs shadow-sm" title={user?.email}>
               {initial}
             </div>
           </div>
@@ -68,9 +66,8 @@ export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) 
       <div className="px-5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between overflow-x-auto gap-4 py-1.5">
         <nav className="flex items-center gap-1 shrink-0">
           {NAV_TABS.map((tab) => (
-            <a className={tab.badge ? TAB_WITH_BADGE : TAB} href="#" key={tab.label} onClick={(e) => go(e, tab.to)}>
+            <a className={TAB} href="#" key={tab.label} onClick={(e) => go(e, tab.to)}>
               {tab.label}
-              {tab.badge && <span className="px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-700">{tab.badge}</span>}
             </a>
           ))}
           {/* Actively Selected Profile Tab */}

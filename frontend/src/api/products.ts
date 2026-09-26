@@ -15,10 +15,12 @@ export interface ProductInput {
   categoryId: string
   unitOfMeasure: string
   reorderLevel?: number
+  /** Optional opening stock (recorded as an applied "Opening stock" adjustment, visible in the ledger) */
+  initialStock?: { warehouseId: string; locationId: string; quantity: number }
 }
 
 /** SKU can't change after creation */
-export type ProductUpdate = Partial<Omit<ProductInput, 'sku'>>
+export type ProductUpdate = Partial<Omit<ProductInput, 'sku' | 'initialStock'>>
 
 export function listProducts(filters: ProductFilters & { page?: number; limit?: number }) {
   return api<Paginated<Product>>('GET', '/products', { query: { ...filters } })

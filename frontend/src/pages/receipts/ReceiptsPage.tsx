@@ -1,137 +1,342 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { cancelReceipt, confirmReceipt, exportReceiptsCsv, getReceiptSummary, listReceipts, listSuppliers, markReceiptReady, validateReceipt, type ReceiptFilters } from '../../api/receipts.ts'
+import { DOCUMENT_STATUS_LABEL, type DocumentStatus, type Location, type Paginated, type Receipt, type ReceiptStockChange, type ReceiptSummary, type Supplier, type Warehouse } from '../../api/types.ts'
+import { listLocations, listWarehouses } from '../../api/warehouses.ts'
 import { useToast } from '../../context/toast.ts'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
-import { ROUTES } from '../../routes.ts'
+import { receiptPath, ROUTES } from '../../routes.ts'
+import { errorMessage, formatQty, useDebouncedValue } from '../products/productsData.ts'
 import { FilterSelect } from './list/FilterSelect.tsx'
 import { ReceiptRow } from './list/ReceiptRow.tsx'
-import {
-  DATE_OPTIONS,
-  INITIAL_RECEIPTS,
-  KPI_CARD_ACTIVE,
-  KPI_CARD_INACTIVE,
-  KPI_CARDS,
-  matchesReceiptFilters,
-  RECEIPTS_CSV,
-  STATUS_OPTIONS,
-  SUPPLIER_OPTIONS,
-  WAREHOUSE_OPTIONS,
-  type Receipt,
-  type ReceiptStatus,
-  type StatusFilter,
-  type ValidateTarget,
-} from './list/receiptsData.ts'
+import { DATE_OPTIONS, dateRangeFor, KPI_CARD_ACTIVE, KPI_CARD_INACTIVE, KPI_CARDS, STATUS_OPTIONS, type DatePreset, type SelectOption } from './list/receiptsData.ts'
 import { ValidateModal } from './list/ValidateModal.tsx'
+
+const PAGE_SIZE = 10
+const TABLE_COLUMNS = 8
+
+const CHIP = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-semibold border border-indigo-200/70'
+
+/** "SKU: 10 → 25 PCS" for the first few lines, then "+N more" */
+function stockChangeSummary(changes: ReceiptStockChange[]) {
+  const shown = changes.slice(0, 2).map((c) => `${c.sku}: ${formatQty(c.before)} → ${formatQty(c.after)} ${c.unitOfMeasure}`)
+  if (changes.length > 2) shown.push(`+${changes.length - 2} more`)
+  return shown.join(', ')
+}
 
 export default function ReceiptsPage() {
   useDocumentTitle('StockSense — Receipts Management')
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const [receipts, setReceipts] = useState<Receipt[]>(INITIAL_RECEIPTS)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('Ready')
-  const [warehouseFilter, setWarehouseFilter] = useState('ALL')
-  const [supplierFilter, setSupplierFilter] = useState('ALL')
-  const [dateFilter, setDateFilter] = useState('30D')
-  // Highlighted KPI card + "Status: X" chip: set only by the KPI cards, cleared by the chip and Reset
-  const [pinnedStatus, setPinnedStatus] = useState<ReceiptStatus | null>('Ready')
-  // The original doesn't re-run the filters after a validation, so a validated row stays visible
-  // (and counted) until the next filter change
-  const [keptVisibleRefs, setKeptVisibleRefs] = useState<string[]>([])
-  const [validateTarget, setValidateTarget] = useState<ValidateTarget | null>(null)
+  const debouncedSearch = useDebouncedValue(search.trim(), 300)
+  const [statusFilter, setStatusFilter] = useState<DocumentStatus | ''>('')
+  const [supplierFilter, setSupplierFilter] = useState('')
+  const [warehouseFilter, setWarehouseFilter] = useState('')
+  const [locationFilter, setLocationFilter] = useState('')
+  const [datePreset, setDatePreset] = useState<DatePreset>('')
+  const [page, setPage] = useState(1)
+  const [reloadKey, setReloadKey] = useState(0)
+
+  const [result, setResult] = useState<Paginated<Receipt> | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  // Key of the last request that settled; anything else means a request is in flight
+  const [settledKey, setSettledKey] = useState<string | null>(null)
+  const [summary, setSummary] = useState<ReceiptSummary | null>(null)
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+  const [locations, setLocations] = useState<Location[]>([])
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+
+  const [validateTarget, setValidateTarget] = useState<Receipt | null>(null)
+  const [validateError, setValidateError] = useState<string | null>(null)
   const [isPosting, setIsPosting] = useState(false)
-  const postTimer = useRef<number | undefined>(undefined)
 
-  useEffect(() => () => window.clearTimeout(postTimer.current), [])
+  const currentFilters = useMemo<ReceiptFilters>(
+    () => ({
+      search: debouncedSearch || undefined,
+      status: statusFilter || undefined,
+      supplierId: supplierFilter || undefined,
+      warehouseId: warehouseFilter || undefined,
+      locationId: locationFilter || undefined,
+      ...dateRangeFor(datePreset),
+    }),
+    [debouncedSearch, statusFilter, supplierFilter, warehouseFilter, locationFilter, datePreset],
+  )
+  const hasFilters = Boolean(search.trim() || statusFilter || supplierFilter || warehouseFilter || locationFilter || datePreset)
+  const requestKey = `${JSON.stringify(currentFilters)}|${page}|${reloadKey}`
+  const isLoading = settledKey !== requestKey
+  const loadError = isLoading ? null : fetchError
 
-  const filters = { search, status: statusFilter, warehouse: warehouseFilter, supplier: supplierFilter }
-  const isVisible = (r: Receipt) => keptVisibleRefs.includes(r.ref) || matchesReceiptFilters(r, filters)
-  const visibleCount = receipts.filter(isVisible).length
+  // Filter dropdown sources
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    listSuppliers()
+      .then(setSuppliers)
+      .catch(() => setSuppliers([]))
+    listWarehouses({ limit: 100 })
+      .then((res) => setWarehouses(res.data))
+      .catch(() => setWarehouses([]))
+    listLocations()
+      .then(setLocations)
+      .catch(() => setLocations([]))
+  }, [])
 
-  // Any filter change re-evaluates every row
-  function handleFilterChange() {
-    setKeptVisibleRefs([])
+  // Receipts page for the current filters
+  useEffect(() => {
+    let cancelled = false
+    listReceipts({ ...currentFilters, page, limit: PAGE_SIZE })
+      .then((res) => {
+        if (cancelled) return
+        // The page emptied (e.g. after a status change): step back to the last page
+        if (res.data.length === 0 && page > 1 && res.pagination.totalPages > 0) {
+          setPage(res.pagination.totalPages)
+          return
+        }
+        setResult(res)
+        setFetchError(null)
+        setSettledKey(requestKey)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setFetchError(errorMessage(err, 'Could not load receipts. Please try again.'))
+        setSettledKey(requestKey)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentFilters, page, requestKey])
+
+  // KPI cards
+  useEffect(() => {
+    let cancelled = false
+    getReceiptSummary()
+      .then((res) => {
+        if (!cancelled) setSummary(res)
+      })
+      .catch(() => {
+        if (!cancelled) setSummary(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [reloadKey])
+
+  // ⌘F / Ctrl+F focuses the receipt search
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  const refresh = useCallback(() => setReloadKey((key) => key + 1), [])
+
+  const locationOptions = warehouseFilter ? locations.filter((location) => location.warehouse.id === warehouseFilter) : locations
+  const supplierName = suppliers.find((s) => s.id === supplierFilter)?.name
+  const warehouseName = warehouses.find((w) => w.id === warehouseFilter)?.name
+  const locationName = locations.find((l) => l.id === locationFilter)?.name
+  const dateLabel = DATE_OPTIONS.find((o) => o.value === datePreset)?.label
+
+  const supplierSelectOptions: SelectOption[] = [{ value: '', label: 'All Suppliers' }, ...suppliers.map((s) => ({ value: s.id, label: s.status === 'ACTIVE' ? s.name : `${s.name} (inactive)` }))]
+  const warehouseSelectOptions: SelectOption[] = [{ value: '', label: 'All Warehouses' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]
+  const locationSelectOptions: SelectOption[] = [
+    { value: '', label: 'All Locations' },
+    ...locationOptions.map((l) => ({ value: l.id, label: warehouseFilter ? l.name : `${l.warehouse.code} / ${l.name}` })),
+  ]
+
+  function updateFilter(apply: () => void) {
+    apply()
+    setPage(1)
   }
 
-  // Status filter from the top KPI cards
-  function filterByStatus(status: ReceiptStatus) {
-    setStatusFilter(status)
-    setPinnedStatus(status)
-    handleFilterChange()
+  // Status filter from the KPI cards (clicking the selected card clears it)
+  function filterByStatus(status: DocumentStatus) {
+    updateFilter(() => setStatusFilter((current) => (current === status ? '' : status)))
   }
 
-  function clearSingleFilter() {
-    setStatusFilter('ALL')
-    setPinnedStatus(null)
-    handleFilterChange()
+  function changeWarehouse(value: string) {
+    updateFilter(() => {
+      setWarehouseFilter(value)
+      // Keep the location only if it belongs to the chosen warehouse
+      if (value && locationFilter && locations.find((l) => l.id === locationFilter)?.warehouse.id !== value) setLocationFilter('')
+    })
   }
 
   function resetAllReceiptFilters() {
     setSearch('')
-    setStatusFilter('ALL')
-    setWarehouseFilter('ALL')
-    setSupplierFilter('ALL')
-    setDateFilter('30D')
-    setPinnedStatus(null)
-    handleFilterChange()
-    showToast('Filters Reset', 'Showing all incoming inventory receipts.')
+    setStatusFilter('')
+    setSupplierFilter('')
+    setWarehouseFilter('')
+    setLocationFilter('')
+    setDatePreset('')
+    setPage(1)
+  }
+
+  function openReceipt(receipt: Receipt) {
+    navigate(receiptPath(receipt.id))
+  }
+
+  async function runAction(receipt: Receipt, action: (id: string) => Promise<unknown>, title: string, subtitle: string, fallback: string) {
+    setBusyId(receipt.id)
+    setActionError(null)
+    try {
+      await action(receipt.id)
+      showToast(title, subtitle)
+    } catch (err) {
+      setActionError(errorMessage(err, fallback))
+    } finally {
+      setBusyId(null)
+      // Refetch either way: a failed action usually means the receipt changed elsewhere
+      refresh()
+    }
+  }
+
+  function handleConfirm(receipt: Receipt) {
+    void runAction(receipt, confirmReceipt, 'Receipt Confirmed', `${receipt.reference} is now waiting for goods.`, 'Could not confirm the receipt. Please try again.')
+  }
+
+  function handleMarkReady(receipt: Receipt) {
+    void runAction(receipt, markReceiptReady, 'Receipt Ready', `${receipt.reference} is ready to validate.`, 'Could not mark the receipt ready. Please try again.')
+  }
+
+  function handleCancel(receipt: Receipt) {
+    if (!window.confirm(`Cancel receipt ${receipt.reference}? It will be kept as Canceled and no stock will move. This can't be undone.`)) return
+    void runAction(receipt, cancelReceipt, 'Receipt Canceled', `${receipt.reference} has been canceled.`, 'Could not cancel the receipt. Please try again.')
   }
 
   function openValidateModal(receipt: Receipt) {
-    setValidateTarget({
-      ref: receipt.ref,
-      supplier: receipt.supplier,
-      quantity: receipt.validation?.quantity ?? receipt.quantity,
-      location: receipt.validation?.location ?? receipt.zone,
-    })
+    setValidateError(null)
+    setValidateTarget(receipt)
   }
 
   function closeValidateModal() {
+    if (isPosting) return
     setValidateTarget(null)
+    setValidateError(null)
   }
 
-  function confirmReceiptValidation() {
+  async function confirmReceiptValidation() {
     if (!validateTarget) return
-    const { ref } = validateTarget
     setIsPosting(true)
-
-    postTimer.current = window.setTimeout(() => {
+    setValidateError(null)
+    try {
+      const validated = await validateReceipt(validateTarget.id)
+      setValidateTarget(null)
+      const changes = stockChangeSummary(validated.stockChanges)
+      showToast('Receipt Validated', `${validated.reference} posted to the Stock Ledger.${changes ? ` ${changes}` : ''}`)
+      refresh()
+    } catch (err) {
+      setValidateError(errorMessage(err, 'Could not validate the receipt. Please try again.'))
+      refresh()
+    } finally {
       setIsPosting(false)
-      closeValidateModal()
-      showToast('Receipt Validated', `${ref} successfully posted to Stock Ledger.`)
-      setReceipts((rows) => rows.map((r) => (r.ref === ref ? { ...r, status: 'Done' } : r)))
-      setKeptVisibleRefs((refs) => [...refs, ref])
-    }, 600)
+    }
   }
 
-  function openReceiptDetail(ref: string) {
-    showToast(`Receipt ${ref}`, 'Opening detailed line item manifesto and cryptographic hash.')
+  async function exportReceiptsCSV() {
+    setIsExporting(true)
+    setActionError(null)
+    try {
+      await exportReceiptsCsv(currentFilters)
+      showToast('Export Finished', 'StockSense_Receipts.csv downloaded.')
+    } catch (err) {
+      setActionError(errorMessage(err, 'Could not export receipts. Please try again.'))
+    } finally {
+      setIsExporting(false)
+    }
   }
 
-  function editDraft() {
-    navigate(ROUTES.receiptNew)
+  const rows = result?.data ?? []
+  const pagination = result?.pagination
+  const totalPages = Math.max(1, pagination?.totalPages ?? 1)
+  const shownPage = pagination?.page ?? page
+  const firstShown = rows.length > 0 ? (shownPage - 1) * (pagination?.limit ?? PAGE_SIZE) + 1 : 0
+  const lastShown = firstShown > 0 ? firstShown + rows.length - 1 : 0
+
+  function renderTableState() {
+    if (loadError) {
+      return (
+        <tr>
+          <td className="py-14 px-4 text-center" colSpan={TABLE_COLUMNS}>
+            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3">
+              <span className="material-symbols-outlined text-xl">error</span>
+            </div>
+            <p className="text-sm font-semibold text-slate-800">Couldn&apos;t load receipts</p>
+            <p className="text-xs text-slate-500 mt-1">{loadError}</p>
+            <button className="mt-4 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 rounded-lg text-xs font-medium shadow-xs inline-flex items-center gap-1.5 transition-all" onClick={refresh}>
+              <span className="material-symbols-outlined text-[16px] text-slate-500">refresh</span>
+              <span>Retry</span>
+            </button>
+          </td>
+        </tr>
+      )
+    }
+    if (!result || (isLoading && rows.length === 0)) {
+      return (
+        <tr>
+          <td className="py-14 px-4 text-center text-xs text-slate-500" colSpan={TABLE_COLUMNS}>
+            <span className="material-symbols-outlined text-[22px] text-slate-400 animate-spin block mx-auto mb-2 w-fit">progress_activity</span>
+            Loading receipts...
+          </td>
+        </tr>
+      )
+    }
+    if (rows.length === 0) {
+      return (
+        <tr>
+          <td className="py-14 px-4 text-center" colSpan={TABLE_COLUMNS}>
+            <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mx-auto mb-3">
+              <span className="material-symbols-outlined text-xl">{hasFilters ? 'search_off' : 'receipt_long'}</span>
+            </div>
+            <p className="text-sm font-semibold text-slate-800">{hasFilters ? 'No receipts match your filters' : 'No receipts yet'}</p>
+            <p className="text-xs text-slate-500 mt-1">{hasFilters ? 'Try a different search term or reset the filters.' : 'Create your first receipt to record incoming goods from a supplier.'}</p>
+            {hasFilters ? (
+              <button className="mt-4 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 rounded-lg text-xs font-medium shadow-xs inline-flex items-center gap-1.5 transition-all" onClick={resetAllReceiptFilters}>
+                <span className="material-symbols-outlined text-[16px] text-slate-500">restart_alt</span>
+                <span>Reset Filters</span>
+              </button>
+            ) : (
+              <button className="mt-4 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 transition-all active:scale-[0.98]" onClick={() => navigate(ROUTES.receiptNew)}>
+                <span className="material-symbols-outlined text-[17px]">add_circle</span>
+                <span>New Receipt</span>
+              </button>
+            )}
+          </td>
+        </tr>
+      )
+    }
+    return rows.map((receipt) => (
+      <ReceiptRow
+        isBusy={busyId === receipt.id}
+        key={receipt.id}
+        onCancel={handleCancel}
+        onConfirm={handleConfirm}
+        onMarkReady={handleMarkReady}
+        onOpen={openReceipt}
+        onValidate={openValidateModal}
+        receipt={receipt}
+      />
+    ))
   }
 
-  function discardDraft(ref: string) {
-    if (!window.confirm(`Are you sure you want to discard draft ${ref}? This will void unposted lines.`)) return
-    showToast('Draft Discarded', `${ref} has been removed.`)
-    setReceipts((rows) => rows.filter((r) => r.ref !== ref))
-    handleFilterChange()
-  }
-
-  function exportReceiptsCSV() {
-    const link = document.createElement('a')
-    link.setAttribute('href', encodeURI(RECEIPTS_CSV))
-    link.setAttribute('download', 'StockSense_Inbound_Receipts.csv')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    showToast('Export Finished', 'StockSense_Inbound_Receipts.csv downloaded.')
-  }
-
-  function openNewReceiptModal() {
-    navigate(ROUTES.receiptNew)
+  function renderChip(label: string, onClear: () => void) {
+    return (
+      <span className={CHIP} key={label}>
+        <span>{label}</span>
+        <button className="hover:text-indigo-900 flex items-center" onClick={() => updateFilter(onClear)} title="Remove filter">
+          <span className="material-symbols-outlined text-[13px]">close</span>
+        </button>
+      </span>
+    )
   }
 
   return (
@@ -156,17 +361,17 @@ export default function ReceiptsPage() {
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/70">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Inbound Goods
                 </span>
-                <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">38 Active</span>
+                <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">{summary ? `${formatQty(summary.total)} Total` : '— Total'}</span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">Track incoming vendor shipments, staging berths, and atomic stock ledger postings.</p>
             </div>
             {/* Header Action Buttons */}
             <div className="flex items-center gap-2.5">
-              <button className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 rounded-lg text-xs font-medium shadow-xs flex items-center gap-1.5 transition-all" onClick={exportReceiptsCSV}>
-                <span className="material-symbols-outlined text-[16px] text-slate-500">download</span>
+              <button className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 rounded-lg text-xs font-medium shadow-xs flex items-center gap-1.5 transition-all disabled:opacity-60" disabled={isExporting} onClick={exportReceiptsCSV}>
+                <span className={isExporting ? 'material-symbols-outlined text-[16px] text-slate-500 animate-spin' : 'material-symbols-outlined text-[16px] text-slate-500'}>{isExporting ? 'progress_activity' : 'download'}</span>
                 <span>Export CSV</span>
               </button>
-              <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all active:scale-[0.98]" onClick={openNewReceiptModal}>
+              <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all active:scale-[0.98]" onClick={() => navigate(ROUTES.receiptNew)}>
                 <span className="material-symbols-outlined text-[16px]">add_circle</span>
                 <span>+ New Receipt</span>
               </button>
@@ -176,15 +381,15 @@ export default function ReceiptsPage() {
           {/* KPI SUMMARY CARDS (5 Lifecycle Stages) */}
           <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6" id="kpi-cards-grid">
             {KPI_CARDS.map((card) => (
-              <div className={card.status === pinnedStatus ? KPI_CARD_ACTIVE : KPI_CARD_INACTIVE} data-status={card.status} key={card.status} onClick={() => filterByStatus(card.status)}>
+              <div className={card.status === statusFilter ? KPI_CARD_ACTIVE : KPI_CARD_INACTIVE} data-status={card.status} key={card.status} onClick={() => filterByStatus(card.status)}>
                 <div className={card.headClass}>
-                  <span className={card.labelClass}>{card.status}</span>
+                  <span className={card.labelClass}>{DOCUMENT_STATUS_LABEL[card.status]}</span>
                   <span className={card.iconClass}>
                     <span className="material-symbols-outlined text-[17px]">{card.icon}</span>
                   </span>
                 </div>
                 <div className="mt-2.5 flex items-baseline gap-2">
-                  <span className={card.countClass}>{card.count}</span>
+                  <span className={card.countClass}>{summary ? formatQty(summary[card.status]) : '—'}</span>
                   <span className={card.unitClass}>{card.unit}</span>
                 </div>
                 <div className={card.footClass}>
@@ -204,11 +409,9 @@ export default function ReceiptsPage() {
                 <input
                   className="w-full pl-9 pr-12 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-500 transition-all font-medium"
                   id="receiptsSearchInput"
-                  onChange={(e) => {
-                    setSearch(e.target.value)
-                    handleFilterChange()
-                  }}
-                  placeholder="Search receipts by reference, supplier, product, or SKU... (⌘F)"
+                  onChange={(e) => updateFilter(() => setSearch(e.target.value))}
+                  placeholder="Search receipts by reference or supplier... (⌘F)"
+                  ref={searchInputRef}
                   type="text"
                   value={search}
                 />
@@ -219,10 +422,7 @@ export default function ReceiptsPage() {
                 <FilterSelect
                   icon="expand_more"
                   id="receiptFilterStatus"
-                  onChange={(value) => {
-                    setStatusFilter(value as StatusFilter)
-                    handleFilterChange()
-                  }}
+                  onChange={(value) => updateFilter(() => setStatusFilter(value as DocumentStatus | ''))}
                   options={STATUS_OPTIONS}
                   value={statusFilter}
                   wrapperClass="relative min-w-[130px]"
@@ -230,34 +430,33 @@ export default function ReceiptsPage() {
                 <FilterSelect
                   icon="expand_more"
                   id="receiptFilterWarehouse"
-                  onChange={(value) => {
-                    setWarehouseFilter(value)
-                    handleFilterChange()
-                  }}
-                  options={WAREHOUSE_OPTIONS}
+                  onChange={changeWarehouse}
+                  options={warehouseSelectOptions}
                   value={warehouseFilter}
                   wrapperClass="relative min-w-[145px]"
                 />
                 <FilterSelect
                   icon="expand_more"
+                  id="receiptFilterLocation"
+                  onChange={(value) => updateFilter(() => setLocationFilter(value))}
+                  options={locationSelectOptions}
+                  value={locationFilter}
+                  wrapperClass="relative min-w-[145px]"
+                />
+                <FilterSelect
+                  icon="expand_more"
                   id="receiptFilterSupplier"
-                  onChange={(value) => {
-                    setSupplierFilter(value)
-                    handleFilterChange()
-                  }}
-                  options={SUPPLIER_OPTIONS}
+                  onChange={(value) => updateFilter(() => setSupplierFilter(value))}
+                  options={supplierSelectOptions}
                   value={supplierFilter}
                   wrapperClass="relative min-w-[155px]"
                 />
                 <FilterSelect
                   icon="calendar_today"
                   id="receiptFilterDate"
-                  onChange={(value) => {
-                    setDateFilter(value)
-                    handleFilterChange()
-                  }}
+                  onChange={(value) => updateFilter(() => setDatePreset(value as DatePreset))}
                   options={DATE_OPTIONS}
-                  value={dateFilter}
+                  value={datePreset}
                   wrapperClass="relative min-w-[135px]"
                 />
                 {/* Reset Button */}
@@ -275,18 +474,35 @@ export default function ReceiptsPage() {
                   <span className="material-symbols-outlined text-[13px] text-slate-400">tune</span>
                   <span>Scope: Inbound Goods</span>
                 </span>
-                {pinnedStatus && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-semibold border border-indigo-200/70" id="chip-dynamic">
-                    <span id="chip-dynamic-label">Status: {pinnedStatus}</span>
-                    <button className="hover:text-indigo-900 flex items-center" onClick={clearSingleFilter}>
-                      <span className="material-symbols-outlined text-[13px]">close</span>
-                    </button>
-                  </span>
+                {search.trim() && renderChip(`Search: "${search.trim()}"`, () => setSearch(''))}
+                {statusFilter && renderChip(`Status: ${DOCUMENT_STATUS_LABEL[statusFilter]}`, () => setStatusFilter(''))}
+                {supplierFilter && renderChip(`Supplier: ${supplierName ?? '…'}`, () => setSupplierFilter(''))}
+                {warehouseFilter && renderChip(`Warehouse: ${warehouseName ?? '…'}`, () => setWarehouseFilter(''))}
+                {locationFilter && renderChip(`Location: ${locationName ?? '…'}`, () => setLocationFilter(''))}
+                {datePreset && renderChip(`Date: ${dateLabel ?? datePreset}`, () => setDatePreset(''))}
+                {hasFilters && (
+                  <button className="text-[11px] font-medium text-slate-500 hover:text-indigo-600 transition-colors" onClick={resetAllReceiptFilters}>
+                    Reset all
+                  </button>
                 )}
               </div>
-              <span className="text-slate-500 font-mono text-[11px]" id="filterCountIndicator">Showing {visibleCount} of 38 records</span>
+              <span className="text-slate-500 font-mono text-[11px]" id="filterCountIndicator">
+                {pagination ? `Showing ${rows.length} of ${formatQty(pagination.total)} records` : 'Loading records...'}
+              </span>
             </div>
           </div>
+
+          {actionError && (
+            <div className="mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[16px]">error</span>
+                {actionError}
+              </span>
+              <button className="p-0.5 rounded text-rose-500 hover:text-rose-700" onClick={() => setActionError(null)}>
+                <span className="material-symbols-outlined text-[16px]">close</span>
+              </button>
+            </div>
+          )}
 
           {/* MAIN DATA DISPLAY TABLE */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
@@ -298,11 +514,11 @@ export default function ReceiptsPage() {
                 </span>
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Incoming Shipments &amp; Receipt Records</h2>
-                  <p className="text-[11px] text-slate-400">Cryptographically verifiable atomic stock ledger records</p>
+                  <p className="text-[11px] text-slate-400">Validated receipts are posted to the append-only stock ledger</p>
                 </div>
               </div>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Immutable Chain Verified
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Append-only Ledger
               </span>
             </div>
             {/* Table Container */}
@@ -320,47 +536,39 @@ export default function ReceiptsPage() {
                     <th className="py-3 px-4 text-right" scope="col">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-sans" id="receiptsTableBody">
-                  {receipts.map((receipt) => (
-                    <ReceiptRow
-                      hidden={!isVisible(receipt)}
-                      key={receipt.ref}
-                      onDiscardDraft={discardDraft}
-                      onEditDraft={editDraft}
-                      onOpenDetail={openReceiptDetail}
-                      onValidate={openValidateModal}
-                      receipt={receipt}
-                    />
-                  ))}
+                <tbody className={isLoading && rows.length > 0 ? 'divide-y divide-slate-100 font-sans opacity-60 transition-opacity' : 'divide-y divide-slate-100 font-sans'} id="receiptsTableBody">
+                  {renderTableState()}
                 </tbody>
               </table>
             </div>
-            {/* Pagination & Security Guarantee Footer */}
+            {/* Pagination & Ledger Footer */}
             <div className="p-3.5 bg-slate-50/60 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span>All validated receipts generate immutable cryptographic entries in the Stock Ledger. Stock changes are atomic.</span>
+                <span>Only validated receipts change stock. Each validation writes one stock ledger entry per line.</span>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="font-mono text-slate-500">Showing 1–7 of 38 receipts</span>
-                <div className="flex items-center gap-1">
-                  <button className="p-1 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition-colors" disabled title="Previous Page">
-                    <span className="material-symbols-outlined text-[15px]">chevron_left</span>
-                  </button>
-                  <span className="px-2 py-0.5 rounded font-mono font-semibold bg-white border border-slate-200 text-indigo-700 shadow-xs">1</span>
-                  <span className="text-slate-400 font-mono">/ 6</span>
-                  <button className="p-1 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors" onClick={() => showToast('Pagination', 'Navigating to page 2 of receipts...')} title="Next Page">
-                    <span className="material-symbols-outlined text-[15px]">chevron_right</span>
-                  </button>
+              {!loadError && pagination && pagination.total > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-slate-500">{`Showing ${firstShown}–${lastShown} of ${formatQty(pagination.total)} receipts`}</span>
+                  <div className="flex items-center gap-1">
+                    <button className="p-1 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition-colors" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} title="Previous Page">
+                      <span className="material-symbols-outlined text-[15px]">chevron_left</span>
+                    </button>
+                    <span className="px-2 py-0.5 rounded font-mono font-semibold bg-white border border-slate-200 text-indigo-700 shadow-xs">{shownPage}</span>
+                    <span className="text-slate-400 font-mono">/ {totalPages}</span>
+                    <button className="p-1 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition-colors" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} title="Next Page">
+                      <span className="material-symbols-outlined text-[15px]">chevron_right</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
       </main>
 
       {/* QUICK VALIDATE MODAL (Atomic Ledger Posting) */}
-      {validateTarget && <ValidateModal isPosting={isPosting} onClose={closeValidateModal} onConfirm={confirmReceiptValidation} target={validateTarget} />}
+      {validateTarget && <ValidateModal error={validateError} isPosting={isPosting} onClose={closeValidateModal} onConfirm={confirmReceiptValidation} receipt={validateTarget} />}
     </>
   )
 }

@@ -55,6 +55,7 @@ export default function App() {
           <Route element={<ProductDetailPage />} path="/products/:id" />
           <Route element={<ReceiptsPage />} path={ROUTES.receipts} />
           <Route element={<NewReceiptPage />} path={ROUTES.receiptNew} />
+          <Route element={<NewReceiptPage />} path="/receipts/:id" />
           <Route element={<DeliveriesPage />} path={ROUTES.deliveries} />
           <Route element={<TransfersPage />} path={ROUTES.transfers} />
           <Route element={<AdjustmentsPage />} path={ROUTES.adjustments} />

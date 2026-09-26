@@ -1,0 +1,120 @@
+/*
+ * These custom styles come BEFORE the Tailwind output on purpose. The Tailwind CDN appends its
+ * stylesheet after the page's own <style>, so equal-specificity rules (e.g. the forms plugin's
+ * input :focus styles vs .focus-ring:focus) must resolve the same way here.
+ */
+
+/* React mounts into #root; this keeps header/main/footer as direct flex children of <body> */
+#root {
+  display: contents;
+}
+
+/* Subtle dot grid background consistent with premium workspace styling */
+.subtle-grid {
+  background-color: #fbfcfd;
+  background-image: radial-gradient(rgba(100, 116, 139, 0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Smooth focus rings matching Apple aesthetic */
+.focus-ring {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.focus-ring:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+.focus-ring-error:focus {
+  outline: none;
+  border-color: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
+}
+
+/* Keyframes */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-custom {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+.animate-shake {
+  animation: shake 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Tailwind's font-sans. Fallbacks matter for glyphs the web fonts lack (e.g. "→"), so each design keeps its own stack */
+:root {
+  --font-sans: "Plus Jakarta Sans", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", Segoe UI, Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+html.ss-app {
+  --font-sans: "Plus Jakarta Sans", Inter, sans-serif;
+}
+html.ss-profile {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+html.ss-ledger {
+  --font-sans: Inter, sans-serif;
+}
+
+/* ---- Stock Ledger / Warehouse screens ---- */
+html.ss-ledger body {
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Profile / Stock Ledger / Warehouse: page-wide minimalist scrollbars ---- */
+html:is(.ss-profile, .ss-ledger)::-webkit-scrollbar,
+html:is(.ss-profile, .ss-ledger) ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+html:is(.ss-profile, .ss-ledger)::-webkit-scrollbar-track,
+html:is(.ss-profile, .ss-ledger) ::-webkit-scrollbar-track {
+  background: transparent;
+}
+html:is(.ss-profile, .ss-ledger)::-webkit-scrollbar-thumb,
+html:is(.ss-profile, .ss-ledger) ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+html:is(.ss-profile, .ss-ledger)::-webkit-scrollbar-thumb:hover,
+html:is(.ss-profile, .ss-ledger) ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ---- Profile screen dock ---- */
+.dock-item {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease;
+}
+.dock-item:hover {
+  transform: translateY(-4px) scale(1.08);
+}
+
+/* ---- App screens (Products / Receipts) ---- */
+:where(html.ss-app) .material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

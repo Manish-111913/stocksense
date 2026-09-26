@@ -36,7 +36,7 @@ export default {
         // Auth and app screens use different fallback stacks; see --font-sans in index.css
         sans: 'var(--font-sans)',
         mono: 'var(--font-mono)',
-        display: ['Plus Jakarta Sans', 'sans-serif'],
+        display: 'var(--font-display)',
       },
       boxShadow: {
         window: '0 25px 50px -12px rgba(15, 23, 42, 0.18)',

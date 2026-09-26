@@ -30,7 +30,6 @@ import {
   USER_PATH,
 } from './data.ts'
 import { LogoutModal } from './LogoutModal.tsx'
-import { ProfileDock } from './ProfileDock.tsx'
 import { ProfileHeader } from './ProfileHeader.tsx'
 import { ProfileToast } from './ProfileToast.tsx'
 import { SessionDrawer } from './SessionDrawer.tsx'
@@ -47,7 +46,7 @@ function errorMessage(err: unknown, fallback: string) {
 
 export default function ProfilePage() {
   useDocumentTitle('StockSense — Account Profile & Security Settings')
-  usePageChrome('bg-slate-100 text-slate-800 antialiased p-2 sm:p-4 md:p-6 min-h-screen flex flex-col justify-between select-none', 'ss-profile')
+  usePageChrome('bg-slate-100 text-slate-800 antialiased pt-3 sm:pt-4 px-3 sm:px-4 pb-4 min-h-screen flex flex-col justify-between select-none', 'ss-profile')
   const navigate = useNavigate()
   // Signed-in profile from the session store; refreshed from GET /users/me on mount (fetchMe updates the store)
   const user = useCurrentUser()
@@ -180,18 +179,16 @@ export default function ProfilePage() {
       {/* Notification Toast Container */}
       <ProfileToast toast={toast} />
       {/* MacOS Window Container */}
-      <div className="w-full max-w-[1720px] mx-auto bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/90 flex flex-col flex-1 overflow-hidden relative">
-        <ProfileHeader onEditProfile={enableProfileEdit} />
+      <div className="w-full mx-auto bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/90 flex flex-col flex-1 overflow-hidden relative">
+        <ProfileHeader />
         {/* Main Scrollable Body Content */}
-        <main className="flex-1 p-5 md:p-6 bg-slate-50/50 overflow-y-auto pb-28">
+        <main className="flex-1 p-5 md:p-6 bg-slate-50/50 overflow-y-auto pb-32 md:pb-32">
           {/* Breadcrumbs & Operations Sub-Header */}
           <div className="mb-5">
             <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
               <span className="hover:text-slate-800 cursor-pointer" onClick={() => navigate(ROUTES.dashboard)}>Operations</span>
               <span className="text-slate-400">/</span>
               <span className="hover:text-slate-800 cursor-pointer">Settings</span>
-              <span className="text-slate-400">/</span>
-              <span className="font-mono text-brand-600 font-semibold">{ROUTES.profile}</span>
             </div>
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
@@ -507,20 +504,7 @@ export default function ProfilePage() {
           </div>
         </main>
         {/* Bottom Status Bar */}
-        <footer className="h-7 bg-slate-100 border-t border-slate-200 px-4 flex items-center justify-between text-[11px] font-mono text-slate-500 z-30 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className={loadState === 'error' ? 'w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0' : loadState === 'loading' ? 'w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0' : 'w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0'} />
-            <span className="truncate">
-              {loadState === 'error' ? 'Profile not refreshed' : loadState === 'loading' ? 'Syncing profile...' : 'Profile synced'}
-              {user ? ` · Signed in as ${user.email}` : ''}
-            </span>
-          </div>
-          <div className="hidden sm:flex items-center gap-3">
-            <span>{device.label}</span>
-          </div>
-        </footer>
       </div>
-      <ProfileDock />
       <LogoutModal isLoggingOut={isLoggingOut} isOpen={isLogoutOpen} onCancel={() => setIsLogoutOpen(false)} onConfirm={() => void confirmLogout()} />
     </>
   )

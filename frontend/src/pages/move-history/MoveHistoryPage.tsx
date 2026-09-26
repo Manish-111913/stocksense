@@ -10,9 +10,7 @@ import { errorMessage, formatQty, useDebouncedValue } from '../products/products
 import { DATE_OPTIONS, dateRangeFor, MOVEMENT_BADGES, MOVEMENT_OPTIONS, MOVEMENT_TYPES, pageList, type DatePreset, type SelectOption } from './data.ts'
 import { InspectorDrawer } from './InspectorDrawer.tsx'
 import { KpiCards } from './KpiCards.tsx'
-import { LedgerDock } from './LedgerDock.tsx'
 import { LedgerFilterSelect } from './LedgerFilterSelect.tsx'
-import { LedgerFooter } from './LedgerFooter.tsx'
 import { LedgerHeader } from './LedgerHeader.tsx'
 import { LedgerRow } from './LedgerRow.tsx'
 
@@ -32,7 +30,7 @@ interface LedgerOverview {
 export default function MoveHistoryPage() {
   const navigate = useNavigate()
   useDocumentTitle('StockSense — Stock Ledger & Move History')
-  usePageChrome('bg-slate-100/80 text-slate-900 p-2 sm:p-4 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white', 'ss-ledger')
+  usePageChrome('bg-slate-100/80 text-slate-900 pt-3 sm:pt-4 px-3 sm:px-4 pb-4 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white', 'ss-ledger')
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const headerSearchRef = useRef<HTMLInputElement>(null)
@@ -57,7 +55,7 @@ export default function MoveHistoryPage() {
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
 
-  const [isDrawerOpen, setIsDrawerOpen] = useState(true)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<LedgerEntry | null>(null)
 
   const currentFilters = useMemo<LedgerFilters>(
@@ -287,18 +285,16 @@ export default function MoveHistoryPage() {
 
   return (
     // Desktop App Window Shell Container
-    <div className="w-full max-w-[1720px] mx-auto bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/90 flex flex-col flex-1 overflow-hidden relative">
-      <LedgerHeader isExporting={isExporting} onExport={exportLedger} onSearchChange={(value) => updateFilter(() => setSearch(value))} search={search} searchRef={headerSearchRef} />
+    <div className="w-full mx-auto bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/90 flex flex-col flex-1 overflow-hidden relative">
+      <LedgerHeader onSearchChange={(value) => updateFilter(() => setSearch(value))} search={search} searchRef={headerSearchRef} />
       {/* Main Scrollable Body Content */}
-      <main className="flex-1 p-5 md:p-6 bg-slate-50/50 overflow-y-auto pb-28">
+      <main className="flex-1 p-5 md:p-6 bg-slate-50/50 overflow-y-auto pb-32 md:pb-32">
         {/* Breadcrumbs & Operations Sub-Header */}
         <div className="mb-5">
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
             <span className="hover:text-slate-800 cursor-pointer" onClick={() => navigate(ROUTES.dashboard)}>Operations</span>
             <span className="text-slate-400">/</span>
             <span className="hover:text-slate-800 cursor-pointer">Stock Ledger</span>
-            <span className="text-slate-400">/</span>
-            <span className="font-mono text-indigo-600 font-semibold">/move-history</span>
           </div>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
@@ -437,7 +433,7 @@ export default function MoveHistoryPage() {
             </button>
           </div>
         )}
-        {/* Main Workspace Split: Table + Inspection Drawer */}
+        {/* Ledger table (the inspector opens as a panel over the page) */}
         <div className="flex flex-col xl:flex-row gap-5 items-start">
           {/* Enterprise Ledger Table Container */}
           <div className="w-full flex-1 bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
@@ -514,8 +510,6 @@ export default function MoveHistoryPage() {
           <InspectorDrawer entry={inspected} isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
         </div>
       </main>
-      <LedgerDock />
-      <LedgerFooter latestAt={overview?.latestAt ?? null} totalMovements={overview?.total ?? null} />
     </div>
   )
 }

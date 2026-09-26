@@ -1,4 +1,5 @@
 export const ROUTES = {
+  landing: '/',
   signup: '/signup',
   login: '/login',
   forgotPassword: '/forgot-password',

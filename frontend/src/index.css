@@ -48,25 +48,41 @@
   animation: shake 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
-/* Tailwind's font-sans. Fallbacks matter for glyphs the web fonts lack (e.g. "→"), so each design keeps its own stack */
+/* One font on every page: Geist (Poppins, then system fallbacks); JetBrains Mono only where text is set in monospace */
 :root {
-  --font-sans: "Plus Jakarta Sans", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", Segoe UI, Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-sans: "Geist", "Poppins", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: "Geist", "Poppins", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-html.ss-app {
-  --font-sans: "Plus Jakarta Sans", Inter, sans-serif;
+body {
+  font-family: var(--font-sans);
 }
+:where(h1, h2) {
+  font-family: var(--font-display);
+}
+/* Right-side inspector drawers slide in over the page (same as the Transfers / Adjustments detail panels) */
+@keyframes ss-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.ss-drawer-in {
+  animation: ss-drawer-in 0.3s ease-out;
+}
+/* Signed-in pages hide the page scrollbar like the Dashboard, so the fixed bottom bar lines up the same everywhere */
+html.ss-app,
+html.ss-ledger,
 html.ss-profile {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  scrollbar-width: none;
 }
-html.ss-ledger {
-  --font-sans: Inter, sans-serif;
+html.ss-app::-webkit-scrollbar,
+html.ss-ledger::-webkit-scrollbar,
+html.ss-profile::-webkit-scrollbar {
+  display: none;
 }
 
 /* ---- Stock Ledger / Warehouse screens ---- */
 html.ss-ledger body {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -113,6 +129,26 @@ html:is(.ss-profile, .ss-ledger) ::-webkit-scrollbar-thumb:hover {
 .custom-scroll::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 9999px;
+}
+
+/* ---- Landing page (/): flow-arrow pulses and the hero dot grid, scoped to html.ss-landing ---- */
+@keyframes pulseArrow {
+  0%, 100% { opacity: 0.35; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(4px); }
+}
+@keyframes pulseArrowHorizontal {
+  0%, 100% { opacity: 0.35; transform: translateX(0); }
+  50% { opacity: 1; transform: translateX(4px); }
+}
+html.ss-landing .flow-arrow-down {
+  animation: pulseArrow 2.2s infinite ease-in-out;
+}
+html.ss-landing .flow-arrow-right {
+  animation: pulseArrowHorizontal 2.2s infinite ease-in-out;
+}
+html.ss-landing .grid-pattern {
+  background-size: 32px 32px;
+  background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
 }
 
 @tailwind base;

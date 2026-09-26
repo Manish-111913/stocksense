@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import type { Warehouse, WarehouseLocation } from '../../api/types.ts'
 import { formatDate, plural } from './data.ts'
 
-const DRAWER = 'w-full xl:w-[440px] bg-white rounded-xl border border-slate-200 shadow-sm p-4 md:p-5 flex flex-col gap-4 shrink-0 transition-all duration-300'
+// Fixed right-side panel over the page (the warehouse table keeps its full width)
+const DRAWER = 'fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 p-5 flex flex-col gap-4 overflow-y-auto ss-drawer-in'
 const LOCATION_ROW = 'flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200/70'
 const LOCATION_ROW_LAST = 'flex items-center justify-between gap-2'
 const ICON_BTN = 'p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
@@ -24,6 +26,15 @@ type InspectorDrawerProps = {
 export function InspectorDrawer({ warehouse, isTopWarehouse, isManager, busyId, onClose, onEdit, onToggleStatus, onAddLocation, onEditLocation, onToggleLocation }: InspectorDrawerProps) {
   const isActive = warehouse.status === 'ACTIVE'
   const locations = warehouse.locations
+
+  // Escape closes the panel
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
 
   return (
     <div className={DRAWER} id="inspectorDrawer">

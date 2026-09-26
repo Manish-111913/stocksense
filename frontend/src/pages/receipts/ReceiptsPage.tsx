@@ -354,7 +354,6 @@ export default function ReceiptsPage() {
                 </span>
                 <span className="text-slate-300">/</span>
                 <span className="font-semibold text-slate-800">Receipts</span>
-                <span className="px-1.5 py-0.2 rounded font-mono text-[10px] bg-indigo-50 text-indigo-700 font-medium ml-1">/receipts</span>
               </div>
               <div className="flex flex-wrap items-center gap-3 pt-0.5">
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900">Receipts</h1>

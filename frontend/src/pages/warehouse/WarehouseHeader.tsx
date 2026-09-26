@@ -1,20 +1,12 @@
-import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { getProductSummary } from '../../api/products.ts'
 import type { ProductSummary } from '../../api/types.ts'
 import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
-import { NAV_TABS } from './data.ts'
 
-const TAB = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-colors'
-
-type WarehouseHeaderProps = {
-  /** Only passed for inventory managers */
-  onAddWarehouse?: () => void
-}
-
-// macOS window chrome header with the pinned sub-navigation tab bar
-export function WarehouseHeader({ onAddWarehouse }: WarehouseHeaderProps) {
+// macOS window chrome header (search, alerts, user badge)
+export function WarehouseHeader() {
   const { name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
   const [summary, setSummary] = useState<ProductSummary | null>(null)
@@ -43,11 +35,6 @@ export function WarehouseHeader({ onAddWarehouse }: WarehouseHeaderProps) {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
-
-  function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to: string) {
-    event.preventDefault()
-    navigate(to)
-  }
 
   // User badge opens the profile page (mouse, Enter or Space)
   function handleBadgeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -114,30 +101,6 @@ export function WarehouseHeader({ onAddWarehouse }: WarehouseHeaderProps) {
               {initial}
             </div>
           </div>
-        </div>
-      </div>
-      {/* Pinned Sub-Navigation Tab Bar */}
-      <div className="px-5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between overflow-x-auto gap-4 py-1.5">
-        <nav className="flex items-center gap-1 shrink-0">
-          {NAV_TABS.map((tab) => (
-            <a className={TAB} href="#" key={tab.label} onClick={(e) => handleNavClick(e, tab.to)}>
-              {tab.label}
-            </a>
-          ))}
-          {/* Actively Selected Warehouse Tab */}
-          <a className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all flex items-center gap-1.5" href="#" onClick={(e) => handleNavClick(e, ROUTES.warehouse)}>
-            <span className="material-symbols-outlined text-[14px]">warehouse</span>
-            Warehouse
-          </a>
-        </nav>
-        <div className="hidden lg:flex items-center gap-2 shrink-0">
-          <span className="text-[11px] font-mono text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs">{ROUTES.warehouse}</span>
-          {onAddWarehouse && (
-            <button className="px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-1.5" onClick={onAddWarehouse} type="button">
-              <span className="material-symbols-outlined text-[14px]">add</span>
-              Add Warehouse
-            </button>
-          )}
         </div>
       </div>
     </header>

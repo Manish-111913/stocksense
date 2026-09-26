@@ -1,39 +1,5 @@
 import { ApiError } from '../../api/client.ts'
 import type { Warehouse } from '../../api/types.ts'
-import { ROUTES } from '../../routes.ts'
-
-export type NavTab = {
-  label: string
-  to: string
-}
-
-// Sub-navigation tabs before the active Warehouse tab
-export const NAV_TABS: NavTab[] = [
-  { label: 'Dashboard', to: ROUTES.dashboard },
-  { label: 'Products', to: ROUTES.products },
-  { label: 'Receipts', to: ROUTES.receipts },
-  { label: 'Deliveries', to: ROUTES.deliveries },
-  { label: 'Transfers', to: ROUTES.transfers },
-  { label: 'Adjustments', to: ROUTES.adjustments },
-  { label: 'Move History', to: ROUTES.moveHistory },
-]
-
-export type DockItem = {
-  title: string
-  icon: string
-  to: string
-}
-
-// Floating dock entries before the active Warehouse icon
-export const DOCK_ITEMS: DockItem[] = [
-  { title: 'Dashboard', icon: 'dashboard', to: ROUTES.dashboard },
-  { title: 'Products', icon: 'inventory_2', to: ROUTES.products },
-  { title: 'Receipts', icon: 'move_to_inbox', to: ROUTES.receipts },
-  { title: 'Deliveries', icon: 'local_shipping', to: ROUTES.deliveries },
-  { title: 'Transfers', icon: 'sync_alt', to: ROUTES.transfers },
-  { title: 'Adjustments', icon: 'tune', to: ROUTES.adjustments },
-  { title: 'Move History', icon: 'history', to: ROUTES.moveHistory },
-]
 
 export const PAGE_SIZE = 10
 

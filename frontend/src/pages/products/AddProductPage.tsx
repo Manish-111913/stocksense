@@ -261,7 +261,6 @@ export default function AddProductPage() {
             </button>
             <span className="text-slate-300">/</span>
             <span className="font-semibold text-slate-800">Add Product</span>
-            <span className="px-1.5 py-0.2 rounded font-mono text-[10px] bg-indigo-50 text-indigo-700 font-medium ml-1">/products/new</span>
           </nav>
 
           {/* 2. Page Header */}

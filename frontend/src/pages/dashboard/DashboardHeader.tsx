@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
-import { HEADER_NAV_LINKS } from './data.ts'
 
 interface DashboardHeaderProps {
   /** Low + out-of-stock products; shows the alert dot when above zero */
@@ -30,11 +29,6 @@ export function DashboardHeader({ alertCount, onAlertsClick, onSearch }: Dashboa
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to?: string) {
-    event.preventDefault()
-    if (to) navigate(to)
-  }
-
   // User badge opens the profile page (mouse, Enter or Space)
   function handleBadgeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -61,16 +55,6 @@ export function DashboardHeader({ alertCount, onAlertsClick, onSearch }: Dashboa
             </div>
           </div>
         </div>
-        <nav className="hidden md:flex items-center gap-1">
-          <a className="px-3 py-1.5 rounded-xl font-label-md text-label-md bg-primary-container text-on-primary font-semibold shadow-sm transition-all flex items-center gap-1.5" href="#" onClick={(e) => handleNavClick(e)}>
-            <span className="material-symbols-outlined text-[16px]">dashboard</span>Dashboard
-          </a>
-          {HEADER_NAV_LINKS.map((link) => (
-            <a className="px-3 py-1.5 rounded-xl font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all" href="#" key={link.label} onClick={(e) => handleNavClick(e, link.to)}>
-              {link.label}
-            </a>
-          ))}
-        </nav>
       </div>
       <div className="flex items-center gap-space-base">
         <form className="relative hidden sm:flex items-center w-64" onSubmit={handleSearch} role="search">

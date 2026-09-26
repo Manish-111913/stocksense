@@ -2,42 +2,6 @@ import type { LedgerDirection, LedgerEntry, MovementType } from '../../api/types
 import { formatQty } from '../products/productsData.ts'
 import { receiptPath, ROUTES } from '../../routes.ts'
 
-export interface NavLink {
-  label: string
-  to: string
-  active?: boolean
-}
-
-// Pinned sub-navigation tab bar (real modules only)
-export const NAV_LINKS: NavLink[] = [
-  { label: 'Dashboard', to: ROUTES.dashboard },
-  { label: 'Products', to: ROUTES.products },
-  { label: 'Receipts', to: ROUTES.receipts },
-  { label: 'Deliveries', to: ROUTES.deliveries },
-  { label: 'Transfers', to: ROUTES.transfers },
-  { label: 'Adjustments', to: ROUTES.adjustments },
-  { label: 'Move History', to: ROUTES.moveHistory, active: true },
-  { label: 'Warehouse', to: ROUTES.warehouse },
-]
-
-export interface DockItem {
-  title: string
-  icon: string
-  to: string
-  active?: boolean
-}
-
-export const DOCK_ITEMS: DockItem[] = [
-  { title: 'Dashboard', icon: 'dashboard', to: ROUTES.dashboard },
-  { title: 'Products', icon: 'inventory_2', to: ROUTES.products },
-  { title: 'Receipts', icon: 'move_to_inbox', to: ROUTES.receipts },
-  { title: 'Deliveries', icon: 'local_shipping', to: ROUTES.deliveries },
-  { title: 'Transfers', icon: 'sync_alt', to: ROUTES.transfers },
-  { title: 'Adjustments', icon: 'tune', to: ROUTES.adjustments },
-  { title: 'Move History', icon: 'history', to: ROUTES.moveHistory, active: true },
-  { title: 'Warehouse', icon: 'warehouse', to: ROUTES.warehouse },
-]
-
 export const MOVEMENT_TYPES: MovementType[] = ['RECEIPT', 'DELIVERY', 'INTERNAL_TRANSFER', 'ADJUSTMENT']
 
 export const MOVEMENT_BADGES: Record<MovementType, { className: string; icon: string; label: string }> = {

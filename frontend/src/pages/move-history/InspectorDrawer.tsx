@@ -1,4 +1,4 @@
-import { type MouseEvent } from 'react'
+import { type MouseEvent, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import type { LedgerEntry, LedgerPlace } from '../../api/types.ts'
 import { formatQty } from '../products/productsData.ts'
@@ -10,7 +10,8 @@ interface InspectorDrawerProps {
   onClose: () => void
 }
 
-const DRAWER = 'w-full xl:w-[440px] bg-white rounded-xl border border-slate-200 shadow-sm p-4 md:p-5 flex flex-col gap-4 shrink-0 transition-all duration-300'
+// Fixed right-side panel over the page (the ledger table keeps its full width)
+const DRAWER = 'fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 p-5 flex flex-col gap-4 overflow-y-auto ss-drawer-in'
 
 const ACTION_TEXT: Record<LedgerEntry['movementType'], string> = {
   RECEIPT: 'validated',
@@ -51,6 +52,15 @@ function FlowSideRow({ side, role, icon }: { side: FlowSide; role: 'Source' | 'D
 // Right slide-over / inspection panel for the selected ledger entry
 export function InspectorDrawer({ entry, isOpen, onClose }: InspectorDrawerProps) {
   const navigate = useNavigate()
+  // Escape closes the panel
+  useEffect(() => {
+    if (!isOpen || !entry) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, entry, onClose])
   if (!entry) return <div className={`${DRAWER} hidden`} id="inspectorDrawer" />
 
   const badge = MOVEMENT_BADGES[entry.movementType]

@@ -1,14 +1,15 @@
 @config "../../tailwind.dashboard.config.ts";
 
 /* The Dashboard's CDN build had the default Tailwind font stacks (its theme doesn't override sans/mono) */
+/* Same font system as every other page (see --font-sans in index.css) */
 html.ss-dashboard {
-  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-family: var(--font-sans);
 }
 .ss-dashboard kbd,
 .ss-dashboard code,
 .ss-dashboard samp,
 .ss-dashboard pre {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 
 /* From the Dashboard's inline <style> */

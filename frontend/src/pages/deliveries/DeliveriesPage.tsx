@@ -166,7 +166,6 @@ export default function DeliveriesPage() {
 
   usePillAction('new-delivery', () => switchDeliveryView({ kind: 'form', id: null }))
 
-  const breadcrumb = view.kind === 'list' ? '/deliveries' : view.kind === 'form' ? (view.id ? `/deliveries/${view.id.slice(0, 8)}/edit` : '/deliveries/new') : `/deliveries/${view.id.slice(0, 8)}`
 
   /* ---------- Filters ---------- */
 
@@ -403,8 +402,6 @@ export default function DeliveriesPage() {
               <button className="text-indigo-600 font-semibold uppercase hover:text-indigo-800" onClick={backToList}>
                 Deliveries
               </button>
-              <span className="text-slate-300">/</span>
-              <span className="text-slate-500 font-mono lowercase text-xs" id="breadcrumbSubView">{breadcrumb}</span>
             </div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Delivery Orders</h1>

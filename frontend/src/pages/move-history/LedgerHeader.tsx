@@ -1,23 +1,18 @@
-import { type MouseEvent, type Ref, useEffect, useState } from 'react'
+import { type Ref, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { getProductSummary } from '../../api/products.ts'
 import type { ProductSummary } from '../../api/types.ts'
 import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
-import { NAV_LINKS } from './data.ts'
-
-const NAV_LINK = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-colors'
 
 interface LedgerHeaderProps {
   search: string
   onSearchChange: (value: string) => void
   searchRef: Ref<HTMLInputElement>
-  isExporting: boolean
-  onExport: () => void
 }
 
-// macOS window chrome header + pinned sub-navigation tab bar
-export function LedgerHeader({ search, onSearchChange, searchRef, isExporting, onExport }: LedgerHeaderProps) {
+// macOS window chrome header (search, alerts, user badge)
+export function LedgerHeader({ search, onSearchChange, searchRef }: LedgerHeaderProps) {
   const { name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
 
@@ -37,11 +32,6 @@ export function LedgerHeader({ search, onSearchChange, searchRef, isExporting, o
     }
   }, [])
   const stockAlerts = productSummary ? productSummary.lowStock + productSummary.outOfStock : 0
-
-  function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to: string) {
-    event.preventDefault()
-    navigate(to)
-  }
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -86,32 +76,6 @@ export function LedgerHeader({ search, onSearchChange, searchRef, isExporting, o
               {initial}
             </div>
           </div>
-        </div>
-      </div>
-      {/* Pinned Sub-Navigation Tab Bar */}
-      <div className="px-5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between overflow-x-auto gap-4 py-1.5">
-        <nav className="flex items-center gap-1 shrink-0">
-          {NAV_LINKS.map((link) => {
-            if (link.active) {
-              // Actively Selected Move History
-              return (
-                <a className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all flex items-center gap-1.5" href="#" key={link.label} onClick={(e) => handleNavClick(e, link.to)}>
-                  <span className="material-symbols-outlined text-[14px]">history</span>
-                  {link.label}
-                </a>
-              )
-            }
-            return (
-              <a className={NAV_LINK} href="#" key={link.label} onClick={(e) => handleNavClick(e, link.to)}>{link.label}</a>
-            )
-          })}
-        </nav>
-        <div className="hidden lg:flex items-center gap-2 shrink-0">
-          <span className="text-[11px] font-mono text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs">{ROUTES.moveHistory}</span>
-          <button className="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white border border-slate-200 transition-all flex items-center gap-1 disabled:opacity-60" disabled={isExporting} onClick={onExport} type="button">
-            <span className={isExporting ? 'material-symbols-outlined text-[14px] animate-spin' : 'material-symbols-outlined text-[14px]'}>{isExporting ? 'progress_activity' : 'download'}</span>
-            Export CSV
-          </button>
         </div>
       </div>
     </header>

@@ -4,19 +4,6 @@ import { receiptPath, ROUTES } from '../../routes.ts'
 
 export type TypeFilter = 'All' | MovementType
 
-export interface NavLinkItem {
-  label: string
-  /** Links without a screen stay on href="#" */
-  to?: string
-}
-
-export interface DockItem extends NavLinkItem {
-  icon: string
-  /** Summary counter shown as a badge (hidden when zero) */
-  badgeKey?: keyof DashboardSummary
-  badgeClassName?: string
-}
-
 export interface KpiFilterCard {
   type: MovementType
   label: string
@@ -26,40 +13,6 @@ export interface KpiFilterCard {
   valueKey: keyof DashboardSummary
   caption: string
 }
-
-// Header nav links after the active Dashboard link
-export const HEADER_NAV_LINKS: NavLinkItem[] = [
-  { label: 'Products', to: ROUTES.products },
-  { label: 'Receipts', to: ROUTES.receipts },
-  { label: 'Deliveries', to: ROUTES.deliveries },
-  { label: 'Transfers', to: ROUTES.transfers },
-  { label: 'Adjustments', to: ROUTES.adjustments },
-  { label: 'Move History', to: ROUTES.moveHistory },
-  { label: 'Warehouse', to: ROUTES.warehouse },
-]
-
-// Floating dock links after the active Dashboard link
-export const DOCK_ITEMS: DockItem[] = [
-  { label: 'Products', icon: 'inventory_2', to: ROUTES.products },
-  {
-    label: 'Receipts',
-    icon: 'move_to_inbox',
-    to: ROUTES.receipts,
-    badgeKey: 'pendingReceipts',
-    badgeClassName: 'absolute -top-0.5 right-2 px-1 rounded-full bg-secondary-container text-on-secondary-container text-[9px] font-bold',
-  },
-  {
-    label: 'Deliveries',
-    icon: 'local_shipping',
-    to: ROUTES.deliveries,
-    badgeKey: 'pendingDeliveries',
-    badgeClassName: 'absolute -top-0.5 right-2 px-1 rounded-full bg-primary text-on-primary text-[9px] font-bold',
-  },
-  { label: 'Transfers', icon: 'sync_alt', to: ROUTES.transfers },
-  { label: 'Adjustments', icon: 'tune', to: ROUTES.adjustments },
-  { label: 'Move History', icon: 'history', to: ROUTES.moveHistory },
-  { label: 'Warehouse', icon: 'warehouse', to: ROUTES.warehouse },
-]
 
 // KPI cards 3–5, which filter the ledger by document type (counts are DRAFT / WAITING / READY documents)
 export const KPI_FILTER_CARDS: KpiFilterCard[] = [

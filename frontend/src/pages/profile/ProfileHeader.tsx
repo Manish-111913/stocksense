@@ -1,15 +1,13 @@
-import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { getProductSummary } from '../../api/products.ts'
 import type { ProductSummary } from '../../api/types.ts'
 import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
-import { NAV_TABS, SEARCH_PATH, USER_PATH } from './data.ts'
+import { SEARCH_PATH } from './data.ts'
 
-const TAB = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-colors'
-
-// macOS window chrome header with search, user actions and the module tab bar
-export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) {
+// macOS window chrome header with search and user actions
+export function ProfileHeader() {
   const { user, name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
   const [summary, setSummary] = useState<ProductSummary | null>(null)
@@ -38,11 +36,6 @@ export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
-
-  function go(event: MouseEvent<HTMLAnchorElement>, to: string) {
-    event.preventDefault()
-    navigate(to)
-  }
 
   // User badge opens the profile page (mouse, Enter or Space)
   function handleBadgeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -111,28 +104,6 @@ export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) 
               {initial}
             </div>
           </div>
-        </div>
-      </div>
-      {/* Pinned Sub-Navigation Tab Bar */}
-      <div className="px-5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between overflow-x-auto gap-4 py-1.5">
-        <nav className="flex items-center gap-1 shrink-0">
-          {NAV_TABS.map((tab) => (
-            <a className={TAB} href="#" key={tab.label} onClick={(e) => go(e, tab.to)}>
-              {tab.label}
-            </a>
-          ))}
-          {/* Actively Selected Profile Tab */}
-          <a className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white shadow-sm transition-all flex items-center gap-1.5" href="#" onClick={(e) => go(e, ROUTES.profile)}>
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d={USER_PATH} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
-            Profile &amp; Account
-          </a>
-        </nav>
-        <div className="hidden lg:flex items-center gap-2 shrink-0">
-          <span className="text-[11px] font-mono text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-sm">/profile</span>
-          <button className="px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 shadow-sm transition-all flex items-center gap-1.5" onClick={onEditProfile} type="button">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6v6m0 0v6m0-6h6m-6 0H6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
-            Edit Profile
-          </button>
         </div>
       </div>
     </header>

@@ -9,8 +9,6 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
 import { usePageChrome } from '../../hooks/usePageChrome.ts'
 import { productDetailPath, ROUTES } from '../../routes.ts'
 import { errorMessage, formatQty, useDebouncedValue } from '../products/productsData.ts'
-import { DashboardDock } from './DashboardDock.tsx'
-import { DashboardFooter, type SyncState } from './DashboardFooter.tsx'
 import { DashboardHeader } from './DashboardHeader.tsx'
 import {
   ALERT_ACTION,
@@ -38,6 +36,8 @@ import {
   type TypeFilter,
 } from './data.ts'
 import { NewOperationModal } from './NewOperationModal.tsx'
+
+type SyncState = 'syncing' | 'online' | 'offline'
 
 const PAGE_SIZE = 10
 const ALERT_LIMIT = 8
@@ -85,8 +85,6 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [summaryKey, setSummaryKey] = useState<string | null>(null)
-  const [latencyMs, setLatencyMs] = useState<number | null>(null)
-  const [syncedAt, setSyncedAt] = useState<Date | null>(null)
 
   // Operations ledger
   const [operations, setOperations] = useState<Paginated<OperationRow> | null>(null)
@@ -151,14 +149,11 @@ export default function DashboardPage() {
   // KPI summary for the current filters
   useEffect(() => {
     let cancelled = false
-    const startedAt = performance.now()
     getDashboard(kpiFilters)
       .then((res) => {
         if (cancelled) return
         setSummary(res.summary)
         setSummaryError(null)
-        setLatencyMs(Math.round(performance.now() - startedAt))
-        setSyncedAt(new Date())
         setSummaryKey(summaryRequestKey)
       })
       .catch((err: unknown) => {
@@ -294,7 +289,7 @@ export default function DashboardPage() {
       <main className="w-full pt-16 pb-12 flex-1 bg-surface">
         <div className="flex flex-col w-full">
           {/* Interactive Inventory Dashboard Content */}
-          <div className="p-space-base md:p-space-xl max-w-7xl mx-auto w-full space-y-space-lg pb-24">
+          <div className="p-space-base md:p-space-xl w-full space-y-space-lg pb-32 md:pb-32">
             {/* Top Action & Title Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-base bg-surface-container-lowest p-space-lg rounded-xl shadow-sm">
               <div className="space-y-space-xxs">
@@ -678,11 +673,9 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-          <DashboardDock summary={summary} />
           <NewOperationModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
         </div>
       </main>
-      <DashboardFooter latencyMs={latencyMs} summary={summary} syncedAt={syncedAt} syncState={syncState} />
     </div>
   )
 }

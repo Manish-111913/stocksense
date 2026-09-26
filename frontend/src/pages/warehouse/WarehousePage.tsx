@@ -10,7 +10,6 @@ import { useDebouncedValue } from '../products/productsData.ts'
 import { downloadNetworkCsv, errorMessage, PAGE_SIZE, plural, type ToastTone } from './data.ts'
 import { InspectorDrawer } from './InspectorDrawer.tsx'
 import { LocationFormModal } from './LocationFormModal.tsx'
-import { WarehouseDock } from './WarehouseDock.tsx'
 import { WarehouseFormModal } from './WarehouseFormModal.tsx'
 import { WarehouseHeader } from './WarehouseHeader.tsx'
 
@@ -48,7 +47,7 @@ function pageWindow(page: number, totalPages: number) {
 
 export default function WarehousePage() {
   useDocumentTitle('StockSense — Warehouse Management & Locations')
-  usePageChrome('bg-slate-100/80 text-slate-900 p-2 sm:p-4 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white', 'ss-ledger')
+  usePageChrome('bg-slate-100/80 text-slate-900 pt-3 sm:pt-4 px-3 sm:px-4 pb-4 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white', 'ss-ledger')
   const navigate = useNavigate()
   const isManager = useCurrentUser()?.role === 'INVENTORY_MANAGER'
 
@@ -64,7 +63,6 @@ export default function WarehousePage() {
   const [settledKey, setSettledKey] = useState<string | null>(null)
   const [summary, setSummary] = useState<WarehouseSummary | null>(null)
   const [summaryFailed, setSummaryFailed] = useState(false)
-  const [lastSynced, setLastSynced] = useState<Date | null>(null)
 
   const [selected, setSelected] = useState<Warehouse | null>(null)
   const [warehouseForm, setWarehouseForm] = useState<{ warehouse: Warehouse | null } | null>(null)
@@ -118,7 +116,6 @@ export default function WarehousePage() {
         setResult(res)
         setFetchError(null)
         setSettledKey(requestKey)
-        setLastSynced(new Date())
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -432,18 +429,16 @@ export default function WarehousePage() {
 
   // Desktop App Window Shell Container
   return (
-    <div className="w-full max-w-[1720px] mx-auto bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/90 flex flex-col flex-1 overflow-hidden relative">
-      <WarehouseHeader onAddWarehouse={isManager ? openAddWarehouse : undefined} />
+    <div className="w-full mx-auto bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/90 flex flex-col flex-1 overflow-hidden relative">
+      <WarehouseHeader />
       {/* Main Scrollable Body Content */}
-      <main className="flex-1 p-5 md:p-6 bg-slate-50/50 overflow-y-auto pb-28">
+      <main className="flex-1 p-5 md:p-6 bg-slate-50/50 overflow-y-auto pb-32 md:pb-32">
         {/* Breadcrumbs & Operations Sub-Header */}
         <div className="mb-5">
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
             <span className="hover:text-slate-800 cursor-pointer" onClick={() => navigate(ROUTES.dashboard)}>Operations</span>
             <span className="text-slate-400">/</span>
             <span className="hover:text-slate-800 cursor-pointer" onClick={clearFilters}>Warehouses</span>
-            <span className="text-slate-400">/</span>
-            <span className="font-mono text-indigo-600 font-semibold">{ROUTES.warehouse}</span>
           </div>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
@@ -633,7 +628,7 @@ export default function WarehousePage() {
             </div>
           </div>
         </div>
-        {/* Main Workspace Split: Table + Inspection Drawer */}
+        {/* Warehouse table (the inspector opens as a panel over the page) */}
         <div className="flex flex-col xl:flex-row gap-5 items-start">
           {/* Left: Warehouse Directory Table Container */}
           <div className="w-full flex-1 bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
@@ -713,20 +708,7 @@ export default function WarehousePage() {
           )}
         </div>
       </main>
-      <WarehouseDock />
       {/* Bottom System Telemetry Status Bar */}
-      <footer className="h-7 bg-slate-100 border-t border-slate-200 px-4 flex items-center justify-between text-[11px] font-mono text-slate-500 z-30 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className={loadError ? 'w-1.5 h-1.5 rounded-full bg-rose-500' : 'w-1.5 h-1.5 rounded-full bg-emerald-500'} />
-          <span className="hidden sm:inline">
-            {summary ? `Facilities: ${summary.totalWarehouses} · Locations: ${summary.totalLocations} · Stored SKUs: ${summary.storedProducts}` : 'Warehouse network'}
-          </span>
-          <span className="sm:hidden">{summary ? `Facilities: ${summary.totalWarehouses}` : 'Warehouses'}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span>{lastSynced ? `Synced ${lastSynced.toLocaleTimeString()}` : 'Syncing...'}</span>
-        </div>
-      </footer>
       {/* Notification Toast */}
       {toast && (
         <div className="fixed top-6 right-6 z-[60] flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-900 text-white shadow-2xl border border-slate-700/80 transition-all duration-300 max-w-sm" id="toastSuccess" role="status">

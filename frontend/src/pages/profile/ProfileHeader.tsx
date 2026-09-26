@@ -1,5 +1,6 @@
 import { type MouseEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { useUserBadge } from '../../auth/useAuth.ts'
 import { ROUTES } from '../../routes.ts'
 import { NAV_TABS, SEARCH_PATH, USER_PATH } from './data.ts'
 
@@ -8,6 +9,7 @@ const TAB_WITH_BADGE = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-60
 
 // macOS window chrome header with search, user actions and the module tab bar
 export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) {
+  const { name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
 
   function go(event: MouseEvent<HTMLAnchorElement>, to: string) {
@@ -53,11 +55,11 @@ export function ProfileHeader({ onEditProfile }: { onEditProfile: () => void }) 
           <div className="h-5 w-px bg-slate-200" />
           <div className="flex items-center gap-2 pl-1">
             <div className="text-right hidden sm:block">
-              <div className="text-xs font-semibold text-slate-900 leading-tight">Manish</div>
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Inventory Admin</div>
+              <div className="text-xs font-semibold text-slate-900 leading-tight">{name}</div>
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{roleLabel}</div>
             </div>
             <div className="w-8 h-8 rounded-full bg-brand-600 text-white font-semibold flex items-center justify-center text-xs shadow-sm">
-              M
+              {initial}
             </div>
           </div>
         </div>

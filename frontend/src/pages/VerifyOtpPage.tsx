@@ -1,5 +1,7 @@
 import { useRef, useState, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { Navigate, useNavigate } from 'react-router'
+import { requestPasswordReset, verifyOtp } from '../api/auth.ts'
+import { ApiError } from '../api/client.ts'
 import { AlertCircleIcon, ChevronLeftIcon } from '../components/icons.tsx'
 import { SubmitButton } from '../components/SubmitButton.tsx'
 import { useAuthFlow } from '../context/authFlow.ts'
@@ -11,7 +13,6 @@ import { ROUTES } from '../routes.ts'
 const OTP_LENGTH = 6
 const RESEND_COOLDOWN_SECONDS = 30
 const OTP_EXPIRY_SECONDS = 299 // 4 mins 59s
-const DEMO_OTP = '742918'
 const OTP_EXPIRED_MESSAGE = 'The verification code has expired. Please request a new code.'
 
 const emptyOtp = () => Array<string>(OTP_LENGTH).fill('')
@@ -25,17 +26,16 @@ function formatExpiry(secondsLeft: number): string {
 export default function VerifyOtpPage() {
   useDocumentTitle('StockSense — Verify OTP')
   const navigate = useNavigate()
-  const { registeredEmail } = useAuthFlow()
+  const { registeredEmail, setResetToken } = useAuthFlow()
 
   const [digits, setDigits] = useState(emptyOtp)
   const [otpAlert, setOtpAlert] = useState<string | null>(null)
-  // Tracked apart from the alert: clearing the inputs on resend resets the red borders but keeps the alert
+  // Tracked apart from the alert: editing the digits resets the red borders
   const [digitsInvalid, setDigitsInvalid] = useState(false)
   const [isShaking, setIsShaking] = useState(false)
   const [resendNotice, setResendNotice] = useState<string | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
   const [isResending, setIsResending] = useState(false)
-  const [simulateFail, setSimulateFail] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
   // Resend cooldown (30s) and code expiry (5 minutes)
@@ -108,45 +108,47 @@ export default function VerifyOtpPage() {
     }
   }
 
-  function fillDemoOtp() {
-    setDigits(DEMO_OTP.split(''))
-    hideOtpAlert()
-    focusDigit(OTP_LENGTH - 1)
-  }
-
-  // OTP submission -> navigates to Reset Password
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  // OTP submission -> navigates to Reset Password with the short-lived reset token
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!isComplete) return
+    if (!isComplete || isVerifying) return
 
     setIsVerifying(true)
     hideOtpAlert()
     setResendNotice(null)
 
-    setTimeout(() => {
-      setIsVerifying(false)
-
-      if (simulateFail) {
-        showOtpAlert('The OTP entered is incorrect. Please check and try again.')
-        return
-      }
-
+    try {
+      const { resetToken } = await verifyOtp(registeredEmail, digits.join(''))
+      setResetToken(resetToken)
       navigate(ROUTES.resetPassword)
-    }, 750)
+    } catch (err) {
+      showOtpAlert(err instanceof ApiError ? err.message : 'Unable to verify the OTP. Please try again.')
+      setIsVerifying(false)
+    }
   }
 
-  function handleResendOtp() {
+  async function handleResendOtp() {
+    if (isResending) return
     setIsResending(true)
 
-    setTimeout(() => {
-      setIsResending(false)
+    try {
+      await requestPasswordReset(registeredEmail)
+      hideOtpAlert()
       setResendNotice('A new OTP has been dispatched to your email.')
       setTimeout(() => setResendNotice(null), 5000)
       clearOtpInputs()
       resendCooldown.restart()
+      expiry.restart()
       focusDigit(0)
-    }, 700)
+    } catch (err) {
+      setOtpAlert(err instanceof ApiError ? err.message : 'Unable to send a new OTP. Please try again.')
+    } finally {
+      setIsResending(false)
+    }
   }
+
+  // Direct visit without requesting an OTP first
+  if (!registeredEmail) return <Navigate replace to={ROUTES.forgotPassword} />
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.04)] p-7 sm:p-9 transition-all" id="verifyOtpCard">
@@ -259,19 +261,6 @@ export default function VerifyOtpPage() {
           />
         </div>
       </form>
-
-      {/* Quick Testing / Helper Row */}
-      <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-        <div className="flex items-center gap-1.5">
-          <label className="flex items-center gap-1 cursor-pointer select-none text-slate-500">
-            <input checked={simulateFail} className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-0" id="otpSimulateFail" onChange={(e) => setSimulateFail(e.target.checked)} type="checkbox" />
-            <span>Simulate invalid OTP</span>
-          </label>
-        </div>
-        <button className="text-blue-600 hover:text-blue-700 font-medium underline-offset-2 hover:underline focus:outline-none" onClick={fillDemoOtp} type="button">
-          Fill 6-Digit Code
-        </button>
-      </div>
 
       {/* Bottom Return Link */}
       <div className="mt-5 pt-3 border-t border-slate-100 text-center">

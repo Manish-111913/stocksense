@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { requestPasswordReset } from '../api/auth.ts'
+import { ApiError } from '../api/client.ts'
 import { FieldError } from '../components/FieldError.tsx'
 import { ChevronLeftIcon } from '../components/icons.tsx'
 import { SubmitButton } from '../components/SubmitButton.tsx'
@@ -13,16 +15,18 @@ import { ROUTES } from '../routes.ts'
 export default function ForgotPasswordPage() {
   useDocumentTitle('StockSense — Forgot Password')
   const navigate = useNavigate()
-  const { setRegisteredEmail } = useAuthFlow()
+  const { registeredEmail, setRegisteredEmail, setResetToken } = useAuthFlow()
   const { errors, setFieldError, clearFieldError } = useFieldErrors<'forgotEmail'>()
 
-  const [email, setEmail] = useState('')
+  // Prefilled when coming back from Verify OTP via "Change email"
+  const [email, setEmail] = useState(registeredEmail)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Forgot password submit -> transitions to Verify OTP with the masked email
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const emailVal = email.trim()
+    if (isSubmitting) return
+    const emailVal = email.trim().toLowerCase()
 
     if (!emailVal || !validateEmail(emailVal)) {
       setFieldError('forgotEmail', 'Please enter a valid email address')
@@ -31,11 +35,15 @@ export default function ForgotPasswordPage() {
 
     setIsSubmitting(true)
 
-    setTimeout(() => {
-      setIsSubmitting(false)
+    try {
+      await requestPasswordReset(emailVal)
       setRegisteredEmail(emailVal)
+      setResetToken(null)
       navigate(ROUTES.verifyOtp)
-    }, 700)
+    } catch (err) {
+      setFieldError('forgotEmail', err instanceof ApiError ? err.message : 'Unable to send the OTP. Please try again.')
+      setIsSubmitting(false)
+    }
   }
 
   return (

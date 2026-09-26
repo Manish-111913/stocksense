@@ -1,38 +1,29 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { login } from '../api/auth.ts'
+import { ApiError } from '../api/client.ts'
 import { FieldError } from '../components/FieldError.tsx'
 import { AlertCircleIcon, LogoMarkIcon } from '../components/icons.tsx'
 import { PasswordInput } from '../components/PasswordInput.tsx'
 import { SubmitButton } from '../components/SubmitButton.tsx'
-import { useAuthFlow } from '../context/authFlow.ts'
 import { useDocumentTitle } from '../hooks/useDocumentTitle.ts'
 import { useFieldErrors } from '../hooks/useFieldErrors.ts'
 import { inputClassName } from '../lib/inputClassName.ts'
 import { validateEmail } from '../lib/validation.ts'
 import { ROUTES } from '../routes.ts'
 
-const DEMO_EMAIL = 'admin@stocksense.io'
-const DEMO_PASSWORD = 'StockSense2026!'
-
 export default function SignInPage() {
   useDocumentTitle('StockSense — Sign In')
   const navigate = useNavigate()
-  const { showRouteModal } = useAuthFlow()
-  const { errors, setFieldError, clearFieldError, clearAllErrors } = useFieldErrors<'loginEmail' | 'loginPassword'>()
+  const { errors, setFieldError, clearFieldError } = useFieldErrors<'loginEmail' | 'loginPassword'>()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  function fillDemoLoginCredentials() {
-    setEmail(DEMO_EMAIL)
-    setPassword(DEMO_PASSWORD)
-    clearAllErrors()
-    setAlertMessage(null)
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return
 
@@ -57,21 +48,13 @@ export default function SignInPage() {
     setIsSubmitting(true)
     setAlertMessage(null)
 
-    setTimeout(() => {
+    try {
+      // On success GuestOnly redirects to the page that required sign-in (or the Dashboard)
+      await login({ email: emailVal, password }, rememberMe)
+    } catch (err) {
+      setAlertMessage(err instanceof ApiError ? err.message : 'Unable to sign in. Please try again.')
       setIsSubmitting(false)
-
-      if (emailVal.toLowerCase() === 'error@company.com') {
-        setAlertMessage('Invalid email address or password. Please try again.')
-        return
-      }
-
-      showRouteModal(
-        '/dashboard',
-        'Authentication Successful',
-        <>Welcome back to StockSense. User verified as <strong>{emailVal}</strong>.</>,
-        true,
-      )
-    }, 850)
+    }
   }
 
   return (
@@ -147,8 +130,16 @@ export default function SignInPage() {
         {/* Remember Me Checkbox */}
         <div className="flex items-center justify-between pt-1">
           <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 focus:ring-offset-0 cursor-pointer" id="loginRememberMe" name="remember" tabIndex={3} type="checkbox" />
-            <span className="text-xs text-slate-600 font-medium">Remember me for 30 days</span>
+            <input
+              checked={rememberMe}
+              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 focus:ring-offset-0 cursor-pointer"
+              id="loginRememberMe"
+              name="remember"
+              onChange={(e) => setRememberMe(e.target.checked)}
+              tabIndex={3}
+              type="checkbox"
+            />
+            <span className="text-xs text-slate-600 font-medium">Keep me signed in on this device</span>
           </label>
         </div>
 
@@ -165,14 +156,6 @@ export default function SignInPage() {
           />
         </div>
       </form>
-
-      {/* Mock Fast-fill Credential Helpers */}
-      <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-        <span>Demo Account:</span>
-        <button className="text-blue-600 hover:text-blue-700 font-medium underline-offset-2 hover:underline focus:outline-none" onClick={fillDemoLoginCredentials} type="button">
-          Fill Demo Credentials
-        </button>
-      </div>
     </div>
   )
 }

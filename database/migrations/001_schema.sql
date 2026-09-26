@@ -9,8 +9,6 @@
 -- in the same transaction.
 -- =====================================================================
 
-BEGIN;
-
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- gen_random_uuid()
 
 -- ---------------------------------------------------------------------
@@ -427,5 +425,3 @@ BEGIN
   END LOOP;
 END;
 $$;
-
-COMMIT;

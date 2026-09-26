@@ -1,10 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { resetPassword } from '../api/auth.ts'
+import { ApiError } from '../api/client.ts'
 import { FieldError } from '../components/FieldError.tsx'
 import { AlertCircleIcon, ChevronLeftIcon } from '../components/icons.tsx'
 import { PasswordInput } from '../components/PasswordInput.tsx'
 import { PasswordLengthHint, PasswordMatchHint } from '../components/PasswordHints.tsx'
 import { SubmitButton } from '../components/SubmitButton.tsx'
+import { useAuthFlow } from '../context/authFlow.ts'
 import { useDocumentTitle } from '../hooks/useDocumentTitle.ts'
 import { useFieldErrors } from '../hooks/useFieldErrors.ts'
 import { ROUTES } from '../routes.ts'
@@ -17,29 +20,27 @@ interface ResetAlert {
   isExpired: boolean
 }
 
+const EXPIRED_ALERT: ResetAlert = { message: 'Your password reset session has expired. Please request a new OTP.', isExpired: true }
+
 export default function ResetPasswordPage() {
   useDocumentTitle('StockSense — Reset Password')
   const navigate = useNavigate()
-  const { errors, setFieldError, clearFieldError, clearAllErrors } = useFieldErrors<ResetField>()
+  const { resetToken, clearResetFlow } = useAuthFlow()
+  const { errors, setFieldError, clearFieldError } = useFieldErrors<ResetField>()
 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [alert, setAlert] = useState<ResetAlert | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isUpdated, setIsUpdated] = useState(false)
-  const [simulateExpired, setSimulateExpired] = useState(false)
 
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword && newPassword.length >= 8
+  // No verified OTP (direct visit or page reload): the reset has to start again
+  const shownAlert = alert ?? (!resetToken && !isUpdated ? EXPIRED_ALERT : null)
 
-  function fillDemoResetPassword() {
-    setNewPassword('NewStockPass2026!')
-    setConfirmPassword('NewStockPass2026!')
-    clearAllErrors()
-    setAlert(null)
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
 
     if (!newPassword) {
       setFieldError('resetNewPassword', 'Password is required')
@@ -58,23 +59,28 @@ export default function ResetPasswordPage() {
       return
     }
 
+    if (!resetToken) {
+      setAlert(EXPIRED_ALERT)
+      return
+    }
+
     setIsSubmitting(true)
     setAlert(null)
 
-    setTimeout(() => {
-      setIsSubmitting(false)
-
-      if (simulateExpired) {
-        setAlert({ message: 'Your password reset session has expired. Please request a new OTP.', isExpired: true })
-        return
-      }
-
+    try {
+      await resetPassword(resetToken, newPassword)
       setIsUpdated(true)
-    }, 850)
+      // The token is single-use; forget it (and the email) now the password is changed
+      clearResetFlow()
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Unable to update your password. Please try again.'
+      setAlert({ message, isExpired: err instanceof ApiError && err.status === 400 && /expired/i.test(message) })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   function resetPasswordComplete() {
-    setIsUpdated(false)
     navigate(ROUTES.login)
   }
 
@@ -92,12 +98,12 @@ export default function ResetPasswordPage() {
         <p className="text-sm text-slate-500 font-normal leading-relaxed">Choose a new password for your StockSense account.</p>
       </div>
 
-      {alert && (
+      {shownAlert && (
         <div className="mb-5 p-3 rounded-lg bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-medium flex items-start gap-2.5" id="resetAlert">
           <AlertCircleIcon />
           <div className="flex-1">
-            <span id="resetAlertText">{alert.message}</span>{' '}
-            {alert.isExpired && (
+            <span id="resetAlertText">{shownAlert.message}</span>{' '}
+            {shownAlert.isExpired && (
               <button className="underline font-semibold text-rose-700 hover:text-rose-800 ml-1" id="resetAlertLink" onClick={() => navigate(ROUTES.forgotPassword)} type="button">Start again</button>
             )}
           </div>
@@ -154,16 +160,6 @@ export default function ResetPasswordPage() {
           />
         </div>
       </form>
-
-      <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-        <div className="flex items-center gap-1.5">
-          <label className="flex items-center gap-1 cursor-pointer select-none text-slate-500">
-            <input checked={simulateExpired} className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-0" id="resetSimulateExpired" onChange={(e) => setSimulateExpired(e.target.checked)} type="checkbox" />
-            <span>Simulate expired session</span>
-          </label>
-        </div>
-        <button className="text-blue-600 hover:text-blue-700 font-medium underline-offset-2 hover:underline focus:outline-none" onClick={fillDemoResetPassword} type="button">Fill Valid Password</button>
-      </div>
 
       <div className="mt-5 pt-3 border-t border-slate-100 text-center">
         <button className="text-xs font-semibold text-slate-600 hover:text-blue-600 inline-flex items-center justify-center gap-1.5 mx-auto focus:outline-none transition-colors" onClick={() => navigate(ROUTES.login)} type="button">

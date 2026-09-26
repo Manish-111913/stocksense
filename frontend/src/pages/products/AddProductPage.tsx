@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { ApiError } from '../../api/client.ts'
+import { createCategory, createProduct, listCategories } from '../../api/products.ts'
+import type { Category } from '../../api/types.ts'
 import { useToast } from '../../context/toast.ts'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.ts'
-import { ROUTES } from '../../routes.ts'
-import { addProduct, generateSku } from './productsData.ts'
+import { productDetailPath, ROUTES } from '../../routes.ts'
+import { errorMessage, suggestSku, UOM_OPTIONS } from './productsData.ts'
 
 const isValidName = (value: string) => value.trim().length > 0
-const isValidSku = (value: string) => value.trim().length >= 3
+// Letters, digits and . _ / - (the server stores SKUs uppercase)
+const isValidSku = (value: string) => /^[A-Z0-9][A-Z0-9._/-]*$/i.test(value.trim())
 
 // validateNonNegative: negative quantities snap back to 0
 const nonNegative = (event: ChangeEvent<HTMLInputElement>) => (Number(event.target.value) < 0 ? '0' : event.target.value)
@@ -17,33 +21,90 @@ export default function AddProductPage() {
   const { showToast } = useToast()
 
   const [name, setName] = useState('')
-  // Entering the view pre-populates a sample SKU (autoGenerateNewSKU)
-  const [sku, setSku] = useState(generateSku)
+  const [sku, setSku] = useState('')
   const [category, setCategory] = useState('')
-  const [uom, setUom] = useState('PCS')
-  const [initialStock, setInitialStock] = useState('')
+  const [uom, setUom] = useState(UOM_OPTIONS[0].value)
   const [reorderLevel, setReorderLevel] = useState('')
   // Validation indicators: undefined = both hidden, true = success icon, false = error message
   const [nameValid, setNameValid] = useState<boolean | undefined>(undefined)
-  const [skuValid, setSkuValid] = useState<boolean | undefined>(true)
+  const [skuValid, setSkuValid] = useState<boolean | undefined>(undefined)
+  const [skuError, setSkuError] = useState<string | null>(null)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showUnsavedModal, setShowUnsavedModal] = useState(false)
-  const submitTimer = useRef<number | undefined>(undefined)
+
+  // Categories (active only) and the inline "new category" form
+  const [categories, setCategories] = useState<Category[]>([])
+  const [categoriesReload, setCategoriesReload] = useState(0)
+  // Outcome of the last settled categories request; a different key means it's loading
+  const [categoriesSettled, setCategoriesSettled] = useState<{ key: number; state: 'ready' | 'error' } | null>(null)
+  const categoriesState = categoriesSettled?.key === categoriesReload ? categoriesSettled.state : 'loading'
+  const [showNewCategory, setShowNewCategory] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryError, setNewCategoryError] = useState<string | null>(null)
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false)
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
-    return () => window.clearTimeout(submitTimer.current)
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    listCategories('ACTIVE')
+      .then((res) => {
+        if (cancelled) return
+        setCategories(res)
+        setCategory((current) => (res.some((item) => item.id === current) ? current : ''))
+        setCategoriesSettled({ key: categoriesReload, state: 'ready' })
+        // Nothing to pick from yet: open the inline form right away
+        if (res.length === 0) setShowNewCategory(true)
+      })
+      .catch(() => {
+        if (!cancelled) setCategoriesSettled({ key: categoriesReload, state: 'error' })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [categoriesReload])
+
   function autoGenerateNewSKU() {
-    const newSku = generateSku()
+    const newSku = suggestSku(name)
+    if (!newSku) {
+      setNameValid(false)
+      return
+    }
     setSku(newSku)
+    setSkuError(null)
     setSkuValid(isValidSku(newSku))
+  }
+
+  async function handleCreateCategory() {
+    const categoryName = newCategoryName.trim()
+    if (!categoryName) {
+      setNewCategoryError('Category name is required.')
+      return
+    }
+    setIsCreatingCategory(true)
+    setNewCategoryError(null)
+    try {
+      const created = await createCategory({ name: categoryName })
+      setCategories((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      setCategory(created.id)
+      setCategoryError(null)
+      setNewCategoryName('')
+      setShowNewCategory(false)
+      showToast('Category created', `${created.name} is ready to use.`)
+    } catch (err) {
+      setNewCategoryError(errorMessage(err, 'Could not create the category. Please try again.'))
+    } finally {
+      setIsCreatingCategory(false)
+    }
   }
 
   // Handle Unsaved Changes Guard
   function requestReturnToList() {
-    if (name.trim() || initialStock.trim() || reorderLevel.trim()) {
+    if (name.trim() || sku.trim() || category || reorderLevel.trim()) {
       setShowUnsavedModal(true)
     } else {
       navigate(ROUTES.products)
@@ -59,41 +120,44 @@ export default function AddProductPage() {
     navigate(ROUTES.products)
   }
 
-  function handleNewProductSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleNewProductSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    setFormError(null)
 
     const nameOk = isValidName(name)
     setNameValid(nameOk)
-    let skuOk = false
-    if (nameOk) {
-      skuOk = isValidSku(sku)
-      setSkuValid(skuOk)
-    }
+    const skuOk = isValidSku(sku)
+    setSkuError(null)
+    setSkuValid(skuOk)
+    setCategoryError(category ? null : 'Please choose a product category.')
 
-    if (!nameOk || !skuOk || !category) {
-      if (!category) {
-        alert('Please choose a valid Product Category.')
-      }
-      return
-    }
+    if (!nameOk || !skuOk || !category) return
 
     setIsSubmitting(true)
-
-    const product = {
-      name: name.trim(),
-      sku: sku.trim().toUpperCase(),
-      category,
-      uom,
-      stock: parseInt(initialStock || '0'),
-      reorder: reorderLevel || '50',
+    try {
+      const product = await createProduct({
+        name: name.trim(),
+        sku: sku.trim().toUpperCase(),
+        categoryId: category,
+        unitOfMeasure: uom,
+        ...(reorderLevel.trim() ? { reorderLevel: Number(reorderLevel) } : {}),
+      })
+      showToast('Product created successfully', `Added SKU ${product.sku} to catalog.`)
+      navigate(productDetailPath(product.id))
+    } catch (err) {
+      const message = errorMessage(err, 'Could not create the product. Please try again.')
+      if (err instanceof ApiError && (err.status === 409 || /sku/i.test(message))) {
+        setSkuValid(false)
+        setSkuError(message)
+      } else if (err instanceof ApiError && /category/i.test(message)) {
+        setCategoryError(message)
+        // The category may have been deactivated meanwhile: refresh the list
+        setCategoriesReload((key) => key + 1)
+      } else {
+        setFormError(message)
+      }
+      setIsSubmitting(false)
     }
-    const toastSku = sku.trim()
-
-    submitTimer.current = window.setTimeout(() => {
-      addProduct(product)
-      showToast('Product created successfully', `Added SKU ${toastSku} to catalog.`)
-      navigate(ROUTES.products)
-    }, 600)
   }
 
   return (
@@ -127,7 +191,13 @@ export default function AddProductPage() {
 
           {/* 3. Form Container: Clean Apple-inspired minimal enterprise card */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
-            <form className="p-6 sm:p-8 space-y-8" id="createProductFullForm" onSubmit={handleNewProductSubmit}>
+            <form className="p-6 sm:p-8 space-y-8" id="createProductFullForm" noValidate onSubmit={handleNewProductSubmit}>
+              {formError && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2.5" id="createProductError">
+                  <span className="material-symbols-outlined text-[18px] flex-shrink-0">error</span>
+                  <span>{formError}</span>
+                </div>
+              )}
               {/* SECTION 1: Basic Information */}
               <section className="space-y-5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -156,6 +226,7 @@ export default function AddProductPage() {
                           setName(e.target.value)
                           setNameValid(isValidName(e.target.value))
                         }}
+                        maxLength={200}
                         placeholder="Enter product name"
                         required
                         type="text"
@@ -176,7 +247,7 @@ export default function AddProductPage() {
                       <label className="block text-xs font-semibold text-slate-700" htmlFor="newProdSku">
                         SKU / Code <span className="text-rose-500">*</span>
                       </label>
-                      <button className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1" onClick={autoGenerateNewSKU} type="button">
+                      <button className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1" onClick={autoGenerateNewSKU} title="Suggest a SKU from the product name" type="button">
                         <span className="material-symbols-outlined text-[13px]">magic_button</span> Auto-Generate
                       </button>
                     </div>
@@ -186,9 +257,11 @@ export default function AddProductPage() {
                         id="newProdSku"
                         onChange={(e) => {
                           setSku(e.target.value)
+                          setSkuError(null)
                           setSkuValid(isValidSku(e.target.value))
                         }}
-                        placeholder="e.g. STL-001"
+                        maxLength={100}
+                        placeholder="Enter a unique SKU code"
                         required
                         type="text"
                         value={sku}
@@ -198,7 +271,7 @@ export default function AddProductPage() {
                     <p className="text-[11px] text-slate-400 mt-1">A unique identifier for this product.</p>
                     {skuValid === false && (
                       <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1" id="skuErrorMsg">
-                        <span className="material-symbols-outlined text-[13px]">error</span> A valid SKU code is required.
+                        <span className="material-symbols-outlined text-[13px]">error</span> {skuError ?? 'A valid SKU is required (letters, digits and . _ / - only).'}
                       </p>
                     )}
                   </div>
@@ -206,21 +279,101 @@ export default function AddProductPage() {
                   {/* Category & UOM Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="newProdCategory">
-                        Category <span className="text-rose-500">*</span>
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold text-slate-700" htmlFor="newProdCategory">
+                          Category <span className="text-rose-500">*</span>
+                        </label>
+                        {!showNewCategory && categoriesState === 'ready' && (
+                          <button className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1" onClick={() => setShowNewCategory(true)} type="button">
+                            <span className="material-symbols-outlined text-[13px]">add</span> New Category
+                          </button>
+                        )}
+                      </div>
                       <div className="relative">
-                        <select className="appearance-none w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer transition-all" id="newProdCategory" onChange={(e) => setCategory(e.target.value)} required value={category}>
-                          <option disabled value="">Select category...</option>
-                          <option value="Raw Materials">Raw Materials</option>
-                          <option value="Finished Goods">Finished Goods</option>
-                          <option value="Electronics">Electronics</option>
-                          <option value="Furniture">Furniture</option>
-                          <option value="Hardware">Hardware</option>
-                          <option value="Consumables">Consumables</option>
+                        <select
+                          className="appearance-none w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={categoriesState !== 'ready' || categories.length === 0}
+                          id="newProdCategory"
+                          onChange={(e) => {
+                            setCategory(e.target.value)
+                            setCategoryError(null)
+                          }}
+                          required
+                          value={category}
+                        >
+                          <option disabled value="">
+                            {categoriesState === 'loading' ? 'Loading categories...' : categories.length === 0 ? 'No categories yet' : 'Select category...'}
+                          </option>
+                          {categories.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
                         </select>
                         <span className="material-symbols-outlined pointer-events-none absolute right-3 top-2.5 text-slate-400 text-base">unfold_more</span>
                       </div>
+                      {categoriesState === 'error' && (
+                        <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[13px]">error</span> Could not load categories.
+                          <button className="font-semibold underline hover:text-rose-700" onClick={() => setCategoriesReload((key) => key + 1)} type="button">
+                            Retry
+                          </button>
+                        </p>
+                      )}
+                      {categoriesState === 'ready' && categories.length === 0 && (
+                        <p className="text-[11px] text-slate-500 mt-1">No categories exist yet. Create one below to classify this product.</p>
+                      )}
+                      {categoryError && (
+                        <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1" id="categoryErrorMsg">
+                          <span className="material-symbols-outlined text-[13px]">error</span> {categoryError}
+                        </p>
+                      )}
+                      {showNewCategory && (
+                        <div className="mt-2 p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 space-y-2">
+                          <label className="block text-[11px] font-semibold text-slate-700" htmlFor="newCategoryName">New category name</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              className="flex-1 min-w-0 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                              id="newCategoryName"
+                              maxLength={100}
+                              onChange={(e) => {
+                                setNewCategoryName(e.target.value)
+                                setNewCategoryError(null)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  void handleCreateCategory()
+                                }
+                              }}
+                              placeholder="Enter category name"
+                              type="text"
+                              value={newCategoryName}
+                            />
+                            <button className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold disabled:opacity-60" disabled={isCreatingCategory} onClick={() => void handleCreateCategory()} type="button">
+                              {isCreatingCategory ? 'Creating...' : 'Create'}
+                            </button>
+                            {categories.length > 0 && (
+                              <button
+                                className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-[11px] font-semibold"
+                                onClick={() => {
+                                  setShowNewCategory(false)
+                                  setNewCategoryName('')
+                                  setNewCategoryError(null)
+                                }}
+                                type="button"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                          {newCategoryError && (
+                            <p className="text-[11px] text-rose-500 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[13px]">error</span> {newCategoryError}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="newProdUom">
@@ -228,11 +381,11 @@ export default function AddProductPage() {
                       </label>
                       <div className="relative">
                         <select className="appearance-none w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer transition-all" id="newProdUom" onChange={(e) => setUom(e.target.value)} required value={uom}>
-                          <option value="PCS">PCS (Pieces)</option>
-                          <option value="KG">KG (Kilograms)</option>
-                          <option value="L">L (Litres)</option>
-                          <option value="M">M (Meters)</option>
-                          <option value="BOX">BOX (Boxes / Cartons)</option>
+                          {UOM_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                         <span className="material-symbols-outlined pointer-events-none absolute right-3 top-2.5 text-slate-400 text-base">unfold_more</span>
                       </div>
@@ -249,7 +402,7 @@ export default function AddProductPage() {
                   </span>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900">Inventory Settings</h2>
-                    <p className="text-[11px] text-slate-400">Configure the initial quantity and reorder threshold for this product.</p>
+                    <p className="text-[11px] text-slate-400">Configure the reorder threshold for this product.</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -259,8 +412,8 @@ export default function AddProductPage() {
                       <label className="block text-xs font-semibold text-slate-700" htmlFor="newProdInitialStock">Initial Stock</label>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200/80 text-slate-600">(Optional)</span>
                     </div>
-                    <input className="w-full px-3.5 py-2 text-xs font-mono bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" id="newProdInitialStock" min="0" onChange={(e) => setInitialStock(nonNegative(e))} placeholder="0" type="number" value={initialStock} />
-                    <p className="text-[11px] text-slate-500 leading-tight">Use this only when the product already has stock at creation time.</p>
+                    <input className="w-full px-3.5 py-2 text-xs font-mono bg-slate-100 border border-slate-200 rounded-lg text-slate-400 placeholder-slate-400 cursor-not-allowed" disabled id="newProdInitialStock" placeholder="0" type="number" />
+                    <p className="text-[11px] text-slate-500 leading-tight">Opening stock is recorded through inventory operations (receipts or adjustments) once warehouses and locations are set up.</p>
                   </div>
                   {/* Reorder Level */}
                   <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/70 space-y-1.5">
@@ -268,7 +421,7 @@ export default function AddProductPage() {
                       <label className="block text-xs font-semibold text-slate-700" htmlFor="newProdReorderLevel">Reorder Level</label>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">Alert Trigger</span>
                     </div>
-                    <input className="w-full px-3.5 py-2 text-xs font-mono bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" id="newProdReorderLevel" min="0" onChange={(e) => setReorderLevel(nonNegative(e))} placeholder="50" type="number" value={reorderLevel} />
+                    <input className="w-full px-3.5 py-2 text-xs font-mono bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" id="newProdReorderLevel" min="0" onChange={(e) => setReorderLevel(nonNegative(e))} placeholder="0" step="any" type="number" value={reorderLevel} />
                     <p className="text-[11px] text-slate-500 leading-tight">Alert when available stock reaches this level.</p>
                   </div>
                 </div>
@@ -286,7 +439,7 @@ export default function AddProductPage() {
                 <button className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors" onClick={requestReturnToList} type="button">
                   Cancel
                 </button>
-                <button className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white text-xs font-semibold shadow-sm flex items-center justify-center gap-2 transition-all" disabled={isSubmitting} id="btnSubmitNewProduct" type="submit">
+                <button className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white text-xs font-semibold shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-70" disabled={isSubmitting} id="btnSubmitNewProduct" type="submit">
                   <span className={isSubmitting ? 'material-symbols-outlined text-[17px] animate-spin' : 'material-symbols-outlined text-[17px]'} id="btnSubmitIcon">{isSubmitting ? 'progress_activity' : 'add_circle'}</span>
                   <span id="btnSubmitLabel">{isSubmitting ? 'Creating product...' : 'Create Product'}</span>
                 </button>

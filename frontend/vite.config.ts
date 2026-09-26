@@ -4,4 +4,10 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    // Same-origin API calls in development: /api/* goes to the NestJS backend
+    proxy: {
+      '/api': 'http://localhost:4100',
+    },
+  },
 })

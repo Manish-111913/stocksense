@@ -4,7 +4,7 @@ export function validateEmail(email: string): boolean {
 
 // Mask email address (e.g. y•••••@company.com)
 export function maskEmail(email: string): string {
-  if (!email || !email.includes('@')) return 'm•••••@example.com'
+  if (!email || !email.includes('@')) return ''
   const [local, domain] = email.split('@')
   if (local.length <= 1) {
     return `${local}•••••@${domain}`

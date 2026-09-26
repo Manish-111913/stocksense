@@ -1,9 +1,11 @@
-import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { PillActionsContext, type PillActionRegistry } from '../context/pillActions.ts'
 import { ToastContext } from '../context/toast.ts'
 import { usePageChrome } from '../hooks/usePageChrome.ts'
-import { useActiveSkuCount } from '../pages/products/productsData.ts'
+import { getProductSummary } from '../api/products.ts'
+import type { ProductSummary } from '../api/types.ts'
+import { useUserBadge } from '../auth/useAuth.ts'
 import { ROUTES } from '../routes.ts'
 
 type ModuleKey = 'dashboard' | 'products' | 'receipts' | 'deliveries' | 'transfers' | 'adjustments' | 'warehouse' | 'directory'
@@ -64,13 +66,14 @@ const PRODUCTS_PILL: PillVariant = {
   ],
 }
 
-const detailPill = (sku: string): PillVariant => ({
+/** Product detail / new receipt screens; the "Product Detail" item only shows on a product's page */
+const detailPill = (productPath?: string): PillVariant => ({
   containerClass: PILL_CONTAINER,
   activeClass: PILL_ACTIVE_BORDERED,
   items: [
     { icon: 'table_rows', label: 'Directory', to: ROUTES.products },
     { icon: 'add_circle', label: '+ Add Product', to: ROUTES.productNew },
-    { icon: 'info', label: `/products/${sku}`, to: `/products/${sku}` },
+    ...(productPath ? [{ icon: 'info', label: 'Product Detail', to: productPath }] : []),
     { icon: 'add_shopping_cart', label: '/receipts/new', to: ROUTES.receiptNew },
   ],
 })
@@ -132,7 +135,7 @@ function shellConfigFor(pathname: string): ShellConfig {
     case ROUTES.receipts:
       return { title: 'StockSense — Receipts Management', module: 'receipts', variant: 'classic', pill: RECEIPTS_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-300', toastMs: 3800 }
     case ROUTES.receiptNew:
-      return { title: 'StockSense — Receipts Management', module: 'receipts', variant: 'classic', pill: detailPill('STL-001'), bodyPadding: 'pb-28', ...CLASSIC_TOAST }
+      return { title: 'StockSense — Receipts Management', module: 'receipts', variant: 'classic', pill: detailPill(), bodyPadding: 'pb-28', ...CLASSIC_TOAST }
     case ROUTES.deliveries:
       return { title: 'StockSense — Delivery Orders', module: 'deliveries', variant: 'classic', pill: DELIVERIES_PILL, bodyPadding: 'pb-32', toastMotion: 'transition-all duration-300', toastMs: 3500 }
     case ROUTES.transfers:
@@ -142,29 +145,13 @@ function shellConfigFor(pathname: string): ShellConfig {
     case ROUTES.products:
     case ROUTES.productNew:
       return { title: 'StockSense — Products Management', module: 'products', variant: 'classic', pill: PRODUCTS_PILL, bodyPadding: 'pb-28', ...CLASSIC_TOAST }
-    default: {
-      const sku = pathname.split('/')[2] ?? 'STL-001'
-      return { title: 'StockSense — Products Management', module: 'products', variant: 'classic', pill: detailPill(sku), bodyPadding: 'pb-28', ...CLASSIC_TOAST }
-    }
+    default:
+      return { title: 'StockSense — Products Management', module: 'products', variant: 'classic', pill: detailPill(pathname), bodyPadding: 'pb-28', ...CLASSIC_TOAST }
   }
-}
-
-/** Count badge next to a module tab */
-function navCount(key: ModuleKey, variant: ShellVariant, isActive: boolean): number | undefined {
-  if (key === 'receipts') return 12
-  if (key === 'deliveries') return 8
-  if (key === 'transfers' && variant === 'v2') return 24
-  if (key === 'adjustments' && variant === 'v2' && isActive) return 18
-  return undefined
 }
 
 const NAV_ACTIVE = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 transition-all flex items-center gap-1.5'
 const NAV_INACTIVE = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all flex items-center gap-1.5'
-const NAV_COUNT_INACTIVE = 'px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold'
-const NAV_COUNT_ACTIVE: Record<ShellVariant, string> = {
-  classic: 'px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-semibold',
-  v2: 'px-1.5 py-0.2 rounded-full bg-indigo-200/60 text-indigo-800 text-[10px] font-semibold',
-}
 const DOCK_ACTIVE = 'relative p-2 rounded-full bg-indigo-600 text-white shadow-sm group'
 const DOCK_INACTIVE = 'relative p-2 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all group'
 const DOCK_TOOLTIP = 'absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none'
@@ -188,7 +175,19 @@ export default function AppLayout() {
   const shell = shellConfigFor(pathname)
   const { variant } = shell
   usePageChrome(`bg-slate-100/90 text-slate-800 antialiased font-sans min-h-screen p-3 sm:p-5 lg:p-7 flex flex-col items-center justify-start selection:bg-indigo-500 selection:text-white ${shell.bodyPadding}`, 'ss-app')
-  const activeSkuCount = useActiveSkuCount()
+  const { name, initial, roleLabel } = useUserBadge()
+
+  // Live catalog figures for the footer (refreshed on every screen change)
+  const [summary, setSummary] = useState<ProductSummary | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    getProductSummary()
+      .then((next) => !cancelled && setSummary(next))
+      .catch(() => !cancelled && setSummary(null))
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
 
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
@@ -268,10 +267,10 @@ export default function AppLayout() {
               </button>
               <div className="h-4 w-[1px] bg-slate-200" />
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-[11px] font-bold text-indigo-700">M</div>
+                <div className="w-6 h-6 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-[11px] font-bold text-indigo-700">{initial}</div>
                 <div className="hidden sm:flex flex-col text-left">
-                  <span className="text-xs font-semibold text-slate-800 leading-tight">Manish</span>
-                  <span className="text-[9px] text-slate-400 font-medium">Inventory Admin</span>
+                  <span className="text-xs font-semibold text-slate-800 leading-tight">{name}</span>
+                  <span className="text-[9px] text-slate-400 font-medium">{roleLabel}</span>
                 </div>
               </div>
             </div>
@@ -282,12 +281,10 @@ export default function AppLayout() {
             <nav className="flex items-center gap-1 flex-shrink-0">
               {navItems.map((item) => {
                 const isActive = item.key === shell.module
-                const count = navCount(item.key, variant, isActive)
                 return (
                   <a className={isActive ? NAV_ACTIVE : NAV_INACTIVE} href="#" key={item.key} onClick={(e) => handleNavClick(e, item)}>
                     <span className="material-symbols-outlined text-[17px]">{item.icon}</span>
                     <span>{item.label}</span>
-                    {count !== undefined && <span className={isActive ? NAV_COUNT_ACTIVE[variant] : NAV_COUNT_INACTIVE}>{count}</span>}
                   </a>
                 )
               })}
@@ -323,15 +320,11 @@ export default function AppLayout() {
           <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-xl border border-slate-200/70 flex items-center gap-2">
             {MODULES.map((item) => {
               const isActive = item.key === shell.module
-              const count = item.key === 'receipts' ? 12 : item.key === 'deliveries' ? 8 : item.key === 'transfers' && variant === 'v2' ? 24 : undefined
-              // Only Receipts/Deliveries carry a corner badge (and the Deliveries screen's Receipts button has none)
-              const showBadge = !isActive && (item.key === 'receipts' || item.key === 'deliveries') && !(shell.module === 'deliveries' && item.key === 'receipts')
-              const tooltip = isActive && variant === 'v2' ? `${item.label} (Active)` : count !== undefined ? `${item.label} (${count})` : item.label
+              const tooltip = isActive && variant === 'v2' ? `${item.label} (Active)` : item.label
               return (
                 <button className={isActive ? DOCK_ACTIVE : DOCK_INACTIVE} key={item.key} onClick={() => openModule(item)} title={dockTitle(item, variant, isActive)}>
                   <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                   {isActive && <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-indigo-400" />}
-                  {showBadge && <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px] font-bold flex items-center justify-center">{count}</span>}
                   <span className={DOCK_TOOLTIP}>{tooltip}</span>
                 </button>
               )
@@ -343,16 +336,16 @@ export default function AppLayout() {
         <footer className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 border-t border-slate-200/80 px-4 sm:px-6 py-2 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2 backdrop-blur-xs">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Synced: Bengaluru Central Hub</span>
+            <span>StockSense</span>
             <span className="text-slate-300">·</span>
-            <span id="telemetrySkus">Active SKUs: {activeSkuCount}</span>
+            <span id="telemetrySkus">Active SKUs: {summary ? summary.totalProducts : '—'}</span>
             <span className="text-slate-300">·</span>
-            <span>Latency: 24ms</span>
+            <span>Warehouses: {summary ? summary.warehouses : '—'}</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="font-semibold text-slate-700">Operational Core</span>
+            <span className="font-semibold text-slate-700">{name}</span>
             <span className="text-slate-300">·</span>
-            <span className="text-slate-600">Automated Reorder: Active</span>
+            <span className="text-slate-600">{roleLabel}</span>
           </div>
         </footer>
       </PillActionsContext>

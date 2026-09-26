@@ -17,4 +17,4 @@ export const ROUTES = {
   profile: '/profile',
 } as const
 
-export const productDetailPath = (sku: string) => `/products/${sku}`
+export const productDetailPath = (productId: string) => `/products/${productId}`

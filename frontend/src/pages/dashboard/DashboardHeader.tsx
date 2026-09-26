@@ -1,8 +1,10 @@
 import { type MouseEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { useUserBadge } from '../../auth/useAuth.ts'
 import { HEADER_NAV_LINKS } from './data.ts'
 
 export function DashboardHeader() {
+  const { name, initial, roleLabel } = useUserBadge()
   const navigate = useNavigate()
 
   function handleNavClick(event: MouseEvent<HTMLAnchorElement>, to?: string) {
@@ -46,10 +48,10 @@ export function DashboardHeader() {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error" />
         </button>
         <div className="flex items-center gap-space-sm pl-2 cursor-pointer group rounded-xl p-1 hover:bg-surface-container-low transition-colors">
-          <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-semibold text-body-sm shadow-sm">M</div>
+          <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-semibold text-body-sm shadow-sm">{initial}</div>
           <div className="hidden lg:flex flex-col text-left">
-            <span className="font-label-md text-label-md text-on-surface font-semibold leading-tight">Manish</span>
-            <span className="font-label-sm text-label-sm text-on-surface-variant leading-tight">Inventory Admin</span>
+            <span className="font-label-md text-label-md text-on-surface font-semibold leading-tight">{name}</span>
+            <span className="font-label-sm text-label-sm text-on-surface-variant leading-tight">{roleLabel}</span>
           </div>
           <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:text-on-surface transition-colors">keyboard_arrow_down</span>
         </div>

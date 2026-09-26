@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
+import { signup } from '../api/auth.ts'
+import { ApiError } from '../api/client.ts'
 import { FieldError } from '../components/FieldError.tsx'
 import { AlertCircleIcon, LogoMarkIcon } from '../components/icons.tsx'
 import { PasswordInput } from '../components/PasswordInput.tsx'
 import { PasswordLengthHint, PasswordMatchHint } from '../components/PasswordHints.tsx'
 import { SubmitButton } from '../components/SubmitButton.tsx'
-import { useAuthFlow } from '../context/authFlow.ts'
 import { useDocumentTitle } from '../hooks/useDocumentTitle.ts'
 import { useFieldErrors } from '../hooks/useFieldErrors.ts'
 import { inputClassName } from '../lib/inputClassName.ts'
@@ -15,8 +16,7 @@ type SignupField = 'signupName' | 'signupEmail' | 'signupPassword' | 'signupConf
 
 export default function SignUpPage() {
   useDocumentTitle('StockSense — Create Account')
-  const { showRouteModal } = useAuthFlow()
-  const { errors, setFieldError, clearFieldError, clearAllErrors } = useFieldErrors<SignupField>()
+  const { errors, setFieldError, clearFieldError } = useFieldErrors<SignupField>()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -37,17 +37,7 @@ export default function SignUpPage() {
     }
   }
 
-  function fillDemoSignupDetails() {
-    setName('Alexandra Vance')
-    setEmail('alex.vance@acmecorp.io')
-    setPassword('SecureStock2026!')
-    setConfirmPassword('SecureStock2026!')
-    setTermsAccepted(true)
-    clearAllErrors()
-    setAlertMessage(null)
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return
 
@@ -94,21 +84,17 @@ export default function SignUpPage() {
     setIsSubmitting(true)
     setAlertMessage(null)
 
-    setTimeout(() => {
-      setIsSubmitting(false)
-
-      if (emailVal.toLowerCase() === 'error@company.com') {
-        setAlertMessage('Unable to create your account. An account with this email already exists.')
-        return
+    try {
+      // Signs in too; GuestOnly then redirects to the Dashboard
+      await signup({ fullName: nameVal, email: emailVal, password })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setFieldError('signupEmail', err.message)
+      } else {
+        setAlertMessage(err instanceof ApiError ? err.message : 'Unable to create your account. Please try again.')
       }
-
-      showRouteModal(
-        '/dashboard',
-        'Account created successfully',
-        <>Your StockSense account is ready for <strong>{nameVal}</strong> ({emailVal}). Redirecting to your inventory workspace.</>,
-        true,
-      )
-    }, 900)
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -262,14 +248,6 @@ export default function SignUpPage() {
           />
         </div>
       </form>
-
-      {/* Fast-fill Demo Details Helper */}
-      <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-        <span>Quick testing:</span>
-        <button className="text-blue-600 hover:text-blue-700 font-medium underline-offset-2 hover:underline focus:outline-none" onClick={fillDemoSignupDetails} type="button">
-          Fill Demo Details
-        </button>
-      </div>
     </div>
   )
 }

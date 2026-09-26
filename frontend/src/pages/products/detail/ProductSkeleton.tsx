@@ -1,4 +1,4 @@
-// Skeleton loading state (inspectable via the Screen Mode Preview bar)
+// Skeleton loading state while the product is fetched
 export function ProductSkeleton() {
   return (
     <div className="space-y-6 animate-pulse" id="state-skeleton-content">

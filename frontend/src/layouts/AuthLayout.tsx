@@ -1,5 +1,4 @@
 import { Outlet, useLocation, useNavigate } from 'react-router'
-import { RouteModal } from '../components/RouteModal.tsx'
 import { usePageChrome } from '../hooks/usePageChrome.ts'
 import { placeholderLinkProps } from '../lib/placeholderLink.ts'
 import { ROUTES } from '../routes.ts'
@@ -56,8 +55,6 @@ export default function AuthLayout() {
           </div>
         </div>
       </main>
-
-      <RouteModal />
 
       {/* Persistent Bottom System Bar */}
       <footer className="w-full px-6 py-3 border-t border-slate-200/80 bg-white/60 text-[11px] text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2">

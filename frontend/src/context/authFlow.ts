@@ -1,19 +1,14 @@
-import { createContext, useContext, type ReactNode } from 'react'
-
-export interface RouteModalState {
-  route: string
-  title: string
-  description: ReactNode
-  isSuccess: boolean
-}
+import { createContext, useContext } from 'react'
 
 export interface AuthFlowContextValue {
   /** Email the OTP was sent to; shown masked on the Verify OTP screen */
   registeredEmail: string
   setRegisteredEmail: (email: string) => void
-  routeModal: RouteModalState | null
-  showRouteModal: (route: string, title: string, description: ReactNode, isSuccess?: boolean) => void
-  closeRouteModal: () => void
+  /** Short-lived token from a verified OTP, needed to set the new password */
+  resetToken: string | null
+  setResetToken: (token: string | null) => void
+  /** Forgets the email and reset token once the password reset is finished */
+  clearResetFlow: () => void
 }
 
 export const AuthFlowContext = createContext<AuthFlowContextValue | null>(null)

@@ -1,19 +1,20 @@
+import { ApiError } from '../../api/client.ts'
+import type { Warehouse } from '../../api/types.ts'
 import { ROUTES } from '../../routes.ts'
 
 export type NavTab = {
   label: string
   to: string
-  badge?: string
 }
 
 // Sub-navigation tabs before the active Warehouse tab
 export const NAV_TABS: NavTab[] = [
   { label: 'Dashboard', to: ROUTES.dashboard },
   { label: 'Products', to: ROUTES.products },
-  { label: 'Receipts', to: ROUTES.receipts, badge: '12' },
-  { label: 'Deliveries', to: ROUTES.deliveries, badge: '8' },
-  { label: 'Transfers', to: ROUTES.transfers, badge: '24' },
-  { label: 'Adjustments', to: ROUTES.adjustments, badge: '18' },
+  { label: 'Receipts', to: ROUTES.receipts },
+  { label: 'Deliveries', to: ROUTES.deliveries },
+  { label: 'Transfers', to: ROUTES.transfers },
+  { label: 'Adjustments', to: ROUTES.adjustments },
   { label: 'Move History', to: ROUTES.moveHistory },
 ]
 
@@ -34,126 +35,48 @@ export const DOCK_ITEMS: DockItem[] = [
   { title: 'Move History', icon: 'history', to: ROUTES.moveHistory },
 ]
 
-export type WarehouseRow = {
-  name: string
-  code: string
-  address: string
-  icon: string
-  iconBoxClassName: string
-  primary?: boolean
-  locationsLabel: string
-  locationTags: string[]
-  skus: string
-  skuSummary: string
+export const PAGE_SIZE = 10
+
+/** Same rule the API enforces for warehouse / location codes (stored uppercase) */
+export const CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
+export const CODE_HINT = 'Letters, digits and . _ / - only (saved in uppercase).'
+
+export type ToastTone = 'success' | 'error'
+
+export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.') {
+  return error instanceof ApiError ? error.message : fallback
 }
 
-export const WAREHOUSES: WarehouseRow[] = [
-  {
-    name: 'Main Warehouse (West Hub)',
-    code: 'WH-001 · Zone W1',
-    address: 'Bhiwandi Logistics Corridor, MH',
-    icon: 'warehouse',
-    iconBoxClassName: 'w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs',
-    primary: true,
-    locationsLabel: '7 Active Locations',
-    locationTags: ['Bay 04-A', 'Cold Bin 2', 'Dock 01'],
-    skus: '94 SKUs',
-    skuSummary: 'Steel Rods, Plates, Castings',
-  },
-  {
-    name: 'East Depot Facility',
-    code: 'WH-002 · Zone E2',
-    address: 'Kolkata Central Hub, WB',
-    icon: 'domain',
-    iconBoxClassName: 'w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5 border border-blue-100',
-    locationsLabel: '4 Active Locations',
-    locationTags: ['Dock Bay 01', 'Bin 08-C'],
-    skus: '36 SKUs',
-    skuSummary: 'Fasteners, Cables, Spools',
-  },
-  {
-    name: 'Production Plant B',
-    code: 'WH-003 · Zone S4',
-    address: 'Peenya Industrial Zone, Bengaluru, KA',
-    icon: 'factory',
-    iconBoxClassName: 'w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 mt-0.5 border border-amber-100',
-    locationsLabel: '3 Active Locations',
-    locationTags: ['Rack Sector D-12', 'Assembly Bay 01'],
-    skus: '18 SKUs',
-    skuSummary: 'Thermal Paste, WIP Units',
-  },
-]
-
-// Mirrors the row's innerText (icon ligatures included), which the original search matched against
-export function warehouseSearchText(row: WarehouseRow) {
-  return [
-    row.icon,
-    row.name,
-    row.primary ? 'star' : '',
-    row.code,
-    row.address,
-    row.locationsLabel,
-    ...row.locationTags,
-    row.skus,
-    row.skuSummary,
-    'Active',
-    'Inspect',
-    'edit',
-  ].join('\n').toLowerCase()
+export function plural(count: number, noun: string) {
+  return `${count.toLocaleString()} ${noun}${count === 1 ? '' : 's'}`
 }
 
-export type HubLocation = {
-  name: string
-  code: string
-  icon: string
-  rowClassName: string
-  iconBoxClassName: string
-  statusClassName: string
-  dotClassName: string
-  status: string
-  badgeClassName: string
-  skus: string
+export function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-const LOCATION_ROW = 'flex items-center justify-between pb-2.5 border-b border-slate-200/70'
-const LOCATION_ROW_LAST = 'flex items-center justify-between'
+function csvCell(value: string | number) {
+  const text = String(value)
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
 
-// Inspector "Locations Breakdown" entries for #WH-001
-export const HUB_LOCATIONS: HubLocation[] = [
-  {
-    name: 'Stock Bay 04-A',
-    code: 'Code: LOC-W1-BAY04',
-    icon: 'shelves',
-    rowClassName: LOCATION_ROW,
-    iconBoxClassName: 'w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5',
-    statusClassName: 'text-[10px] text-emerald-600 font-medium mt-0.5 flex items-center gap-1',
-    dotClassName: 'w-1.5 h-1.5 rounded-full bg-emerald-500',
-    status: 'Active · Bulk Raw Material',
-    badgeClassName: 'px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-semibold text-xs shrink-0',
-    skus: '42 SKUs',
-  },
-  {
-    name: 'Dispatch Bay 01',
-    code: 'Code: LOC-W1-DISP01',
-    icon: 'local_shipping',
-    rowClassName: LOCATION_ROW,
-    iconBoxClassName: 'w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center text-blue-600 shrink-0 mt-0.5',
-    statusClassName: 'text-[10px] text-emerald-600 font-medium mt-0.5 flex items-center gap-1',
-    dotClassName: 'w-1.5 h-1.5 rounded-full bg-emerald-500',
-    status: 'Active · Staging & Outbound',
-    badgeClassName: 'px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-semibold text-xs shrink-0',
-    skus: '18 SKUs',
-  },
-  {
-    name: 'Cold Bin 2',
-    code: 'Code: LOC-W1-COLD02',
-    icon: 'ac_unit',
-    rowClassName: LOCATION_ROW_LAST,
-    iconBoxClassName: 'w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center text-cyan-600 shrink-0 mt-0.5',
-    statusClassName: 'text-[10px] text-cyan-700 font-medium mt-0.5 flex items-center gap-1',
-    dotClassName: 'w-1.5 h-1.5 rounded-full bg-cyan-500',
-    status: 'Active · Temp Controlled (4°C)',
-    badgeClassName: 'px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono font-semibold text-xs shrink-0',
-    skus: '8 SKUs',
-  },
-]
+/** One row per location (or one row for a warehouse without locations) */
+export function downloadNetworkCsv(warehouses: Warehouse[]) {
+  const header = ['Warehouse', 'Warehouse Code', 'Address / Notes', 'Warehouse Status', 'Warehouse SKUs', 'Location', 'Location Code', 'Location Status', 'Location SKUs']
+  const lines = [header.map(csvCell).join(',')]
+  for (const warehouse of warehouses) {
+    const base = [warehouse.name, warehouse.code, warehouse.description ?? '', warehouse.status, warehouse.productCount]
+    if (warehouse.locations.length === 0) lines.push([...base, '', '', '', ''].map(csvCell).join(','))
+    for (const location of warehouse.locations) {
+      lines.push([...base, location.name, location.code, location.status, location.productCount].map(csvCell).join(','))
+    }
+  }
+  const url = URL.createObjectURL(new Blob([`${lines.join('\r\n')}\r\n`], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `warehouse-network-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}

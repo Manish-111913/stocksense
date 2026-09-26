@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router'
+import { GuestOnly, RequireAuth } from './auth/RouteGuards.tsx'
 import { AuthFlowProvider } from './context/AuthFlowProvider.tsx'
 import AppLayout from './layouts/AppLayout.tsx'
 import AuthLayout from './layouts/AuthLayout.tsx'
@@ -25,21 +26,33 @@ export default function App() {
   return (
     <AuthFlowProvider>
       <Routes>
-        <Route element={<AuthLayout />}>
+        <Route
+          element={
+            <GuestOnly>
+              <AuthLayout />
+            </GuestOnly>
+          }
+        >
           <Route element={<SignUpPage />} path={ROUTES.signup} />
           <Route element={<SignInPage />} path={ROUTES.login} />
           <Route element={<ForgotPasswordPage />} path={ROUTES.forgotPassword} />
           <Route element={<VerifyOtpPage />} path={ROUTES.verifyOtp} />
           <Route element={<ResetPasswordPage />} path={ROUTES.resetPassword} />
         </Route>
-        <Route element={<DashboardPage />} path={ROUTES.dashboard} />
-        <Route element={<MoveHistoryPage />} path={ROUTES.moveHistory} />
-        <Route element={<WarehousePage />} path={ROUTES.warehouse} />
-        <Route element={<ProfilePage />} path={ROUTES.profile} />
-        <Route element={<AppLayout />}>
+        <Route element={<RequireAuth><DashboardPage /></RequireAuth>} path={ROUTES.dashboard} />
+        <Route element={<RequireAuth><MoveHistoryPage /></RequireAuth>} path={ROUTES.moveHistory} />
+        <Route element={<RequireAuth><WarehousePage /></RequireAuth>} path={ROUTES.warehouse} />
+        <Route element={<RequireAuth><ProfilePage /></RequireAuth>} path={ROUTES.profile} />
+        <Route
+          element={
+            <RequireAuth>
+              <AppLayout />
+            </RequireAuth>
+          }
+        >
           <Route element={<ProductsListPage />} path={ROUTES.products} />
           <Route element={<AddProductPage />} path={ROUTES.productNew} />
-          <Route element={<ProductDetailPage />} path="/products/:sku" />
+          <Route element={<ProductDetailPage />} path="/products/:id" />
           <Route element={<ReceiptsPage />} path={ROUTES.receipts} />
           <Route element={<NewReceiptPage />} path={ROUTES.receiptNew} />
           <Route element={<DeliveriesPage />} path={ROUTES.deliveries} />

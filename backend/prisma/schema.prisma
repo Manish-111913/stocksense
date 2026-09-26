@@ -1,0 +1,459 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Category {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String       @unique @db.VarChar(100)
+  description String?
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+  status      RecordStatus @default(ACTIVE)
+  products    Product[]
+
+  @@index([status])
+  @@map("categories")
+}
+
+model Customer {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String       @db.VarChar(200)
+  code       String?      @unique @db.VarChar(50)
+  email      String?      @db.VarChar(255)
+  phone      String?      @db.VarChar(30)
+  status     RecordStatus @default(ACTIVE)
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deliveries Delivery[]
+
+  @@index([name])
+  @@map("customers")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Delivery {
+  id                                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference                         String         @unique @default(dbgenerated("('WH/OUT/'::text || lpad((nextval('delivery_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
+  customerId                        String         @map("customer_id") @db.Uuid
+  warehouseId                       String         @map("warehouse_id") @db.Uuid
+  sourceLocationId                  String         @map("source_location_id") @db.Uuid
+  status                            DocumentStatus @default(DRAFT)
+  deliveryDate                      DateTime       @default(now()) @map("delivery_date") @db.Timestamptz(6)
+  createdBy                         String         @map("created_by") @db.Uuid
+  updatedBy                         String?        @map("updated_by") @db.Uuid
+  pickedBy                          String?        @map("picked_by") @db.Uuid
+  pickedAt                          DateTime?      @map("picked_at") @db.Timestamptz(6)
+  packedBy                          String?        @map("packed_by") @db.Uuid
+  packedAt                          DateTime?      @map("packed_at") @db.Timestamptz(6)
+  validatedBy                       String?        @map("validated_by") @db.Uuid
+  validatedAt                       DateTime?      @map("validated_at") @db.Timestamptz(6)
+  createdAt                         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                         DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  usersDeliveriesCreatedByTousers   User           @relation("deliveries_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  customers                         Customer       @relation(fields: [customerId], references: [id], onUpdate: NoAction)
+  locations                         Location       @relation(fields: [sourceLocationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "deliveries_location_in_warehouse_fk")
+  usersDeliveriesPackedByTousers    User?          @relation("deliveries_packed_byTousers", fields: [packedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  usersDeliveriesPickedByTousers    User?          @relation("deliveries_picked_byTousers", fields: [pickedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  usersDeliveriesUpdatedByTousers   User?          @relation("deliveries_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  usersDeliveriesValidatedByTousers User?          @relation("deliveries_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  warehouses                        Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+  deliveryItems                     DeliveryItem[]
+
+  @@index([customerId])
+  @@index([deliveryDate])
+  @@index([sourceLocationId])
+  @@index([status])
+  @@index([warehouseId])
+  @@map("deliveries")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model DeliveryItem {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deliveryId String   @map("delivery_id") @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  quantity   Decimal  @db.Decimal(18, 3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deliveries Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  products   Product  @relation(fields: [productId], references: [id], onUpdate: NoAction)
+
+  @@unique([deliveryId, productId], map: "delivery_items_delivery_product_key")
+  @@index([productId])
+  @@map("delivery_items")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model InternalTransferItem {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transferId        String           @map("transfer_id") @db.Uuid
+  productId         String           @map("product_id") @db.Uuid
+  quantity          Decimal          @db.Decimal(18, 3)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  products          Product          @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  internalTransfers InternalTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([transferId, productId], map: "internal_transfer_items_transfer_product_key")
+  @@index([productId])
+  @@map("internal_transfer_items")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model InternalTransfer {
+  id                                                                               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference                                                                        String                 @unique @default(dbgenerated("('WH/TR/'::text || lpad((nextval('transfer_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
+  sourceWarehouseId                                                                String                 @map("source_warehouse_id") @db.Uuid
+  sourceLocationId                                                                 String                 @map("source_location_id") @db.Uuid
+  destinationWarehouseId                                                           String                 @map("destination_warehouse_id") @db.Uuid
+  destinationLocationId                                                            String                 @map("destination_location_id") @db.Uuid
+  status                                                                           DocumentStatus         @default(DRAFT)
+  transferDate                                                                     DateTime               @default(now()) @map("transfer_date") @db.Timestamptz(6)
+  createdBy                                                                        String                 @map("created_by") @db.Uuid
+  updatedBy                                                                        String?                @map("updated_by") @db.Uuid
+  validatedBy                                                                      String?                @map("validated_by") @db.Uuid
+  validatedAt                                                                      DateTime?              @map("validated_at") @db.Timestamptz(6)
+  createdAt                                                                        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                                                        DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  internalTransferItems                                                            InternalTransferItem[]
+  usersInternalTransfersCreatedByTousers                                           User                   @relation("internal_transfers_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  locationsInternalTransfersDestinationLocationIdDestinationWarehouseIdTolocations Location               @relation("internal_transfers_destination_location_id_destination_warehouse_idTolocations", fields: [destinationLocationId, destinationWarehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "internal_transfers_destination_in_warehouse_fk")
+  warehousesInternalTransfersDestinationWarehouseIdTowarehouses                    Warehouse              @relation("internal_transfers_destination_warehouse_idTowarehouses", fields: [destinationWarehouseId], references: [id], onUpdate: NoAction)
+  locationsInternalTransfersSourceLocationIdSourceWarehouseIdTolocations           Location               @relation("internal_transfers_source_location_id_source_warehouse_idTolocations", fields: [sourceLocationId, sourceWarehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "internal_transfers_source_in_warehouse_fk")
+  warehousesInternalTransfersSourceWarehouseIdTowarehouses                         Warehouse              @relation("internal_transfers_source_warehouse_idTowarehouses", fields: [sourceWarehouseId], references: [id], onUpdate: NoAction)
+  usersInternalTransfersUpdatedByTousers                                           User?                  @relation("internal_transfers_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  usersInternalTransfersValidatedByTousers                                         User?                  @relation("internal_transfers_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([destinationLocationId])
+  @@index([sourceLocationId])
+  @@index([status])
+  @@index([transferDate])
+  @@map("internal_transfers")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model InventoryAdjustment {
+  id                                        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference                                 String         @unique @default(dbgenerated("('WH/ADJ/'::text || lpad((nextval('adjustment_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
+  productId                                 String         @map("product_id") @db.Uuid
+  warehouseId                               String         @map("warehouse_id") @db.Uuid
+  locationId                                String         @map("location_id") @db.Uuid
+  recordedQuantity                          Decimal        @map("recorded_quantity") @db.Decimal(18, 3)
+  recordedStockVersion                      Int            @default(0) @map("recorded_stock_version")
+  physicalQuantity                          Decimal        @map("physical_quantity") @db.Decimal(18, 3)
+  difference                                Decimal        @db.Decimal(18, 3)
+  reason                                    String         @db.VarChar(255)
+  notes                                     String?
+  status                                    DocumentStatus @default(DRAFT)
+  createdBy                                 String         @map("created_by") @db.Uuid
+  updatedBy                                 String?        @map("updated_by") @db.Uuid
+  appliedBy                                 String?        @map("applied_by") @db.Uuid
+  appliedAt                                 DateTime?      @map("applied_at") @db.Timestamptz(6)
+  createdAt                                 DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                 DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  usersInventoryAdjustmentsAppliedByTousers User?          @relation("inventory_adjustments_applied_byTousers", fields: [appliedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  usersInventoryAdjustmentsCreatedByTousers User           @relation("inventory_adjustments_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  locations                                 Location       @relation(fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "inventory_adjustments_location_in_warehouse_fk")
+  products                                  Product        @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  usersInventoryAdjustmentsUpdatedByTousers User?          @relation("inventory_adjustments_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  warehouses                                Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+
+  @@index([createdAt])
+  @@index([locationId])
+  @@index([productId])
+  @@index([status])
+  @@map("inventory_adjustments")
+}
+
+model Location {
+  id                                                                                       String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId                                                                              String                @map("warehouse_id") @db.Uuid
+  name                                                                                     String                @db.VarChar(150)
+  code                                                                                     String                @db.VarChar(50)
+  status                                                                                   RecordStatus          @default(ACTIVE)
+  createdAt                                                                                DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                                                                DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deliveries                                                                               Delivery[]
+  internalTransfersInternalTransfersDestinationLocationIdDestinationWarehouseIdTolocations InternalTransfer[]    @relation("internal_transfers_destination_location_id_destination_warehouse_idTolocations")
+  internalTransfersInternalTransfersSourceLocationIdSourceWarehouseIdTolocations           InternalTransfer[]    @relation("internal_transfers_source_location_id_source_warehouse_idTolocations")
+  inventoryAdjustments                                                                     InventoryAdjustment[]
+  warehouse                                                                                Warehouse             @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+  receipts                                                                                 Receipt[]
+  stocks                                                                                   Stock[]
+  stockLedgerStockLedgerDestinationLocationIdTolocations                                   StockLedger[]         @relation("stock_ledger_destination_location_idTolocations")
+  stockLedgerStockLedgerLocationIdWarehouseIdTolocations                                   StockLedger[]         @relation("stock_ledger_location_id_warehouse_idTolocations")
+  stockLedgerStockLedgerSourceLocationIdTolocations                                        StockLedger[]         @relation("stock_ledger_source_location_idTolocations")
+
+  @@unique([id, warehouseId], map: "locations_id_warehouse_key")
+  @@unique([warehouseId, code], map: "locations_warehouse_code_key")
+  @@index([status])
+  @@index([warehouseId])
+  @@map("locations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model PasswordResetOtp {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  otpHash      String    @map("otp_hash")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  verifiedAt   DateTime? @map("verified_at") @db.Timestamptz(6)
+  attemptCount Int       @default(0) @map("attempt_count")
+  usedAt       DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, createdAt(sort: Desc)], map: "password_reset_otps_user_created_idx")
+  @@map("password_reset_otps")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Product {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String                 @db.VarChar(200)
+  sku                   String                 @unique @db.VarChar(100)
+  categoryId            String                 @map("category_id") @db.Uuid
+  unitOfMeasure         String                 @map("unit_of_measure") @db.VarChar(30)
+  reorderLevel          Decimal                @default(0) @map("reorder_level") @db.Decimal(18, 3)
+  status                RecordStatus           @default(ACTIVE)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy             String                 @map("created_by") @db.Uuid
+  updatedBy             String?                @map("updated_by") @db.Uuid
+  deliveryItems         DeliveryItem[]
+  internalTransferItems InternalTransferItem[]
+  inventoryAdjustments  InventoryAdjustment[]
+  category              Category               @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
+  createdByUser         User                   @relation("products_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  updatedByUser         User?                  @relation("products_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  receiptItems          ReceiptItem[]
+  stocks                Stock[]
+  stockLedgers          StockLedger[]
+
+  @@index([categoryId])
+  @@index([name])
+  @@index([status])
+  @@map("products")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ReceiptItem {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptId String   @map("receipt_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  quantity  Decimal  @db.Decimal(18, 3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  products  Product  @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  receipts  Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([receiptId, productId], map: "receipt_items_receipt_product_key")
+  @@index([productId])
+  @@map("receipt_items")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Receipt {
+  id                              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference                       String         @unique @default(dbgenerated("('WH/IN/'::text || lpad((nextval('receipt_reference_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(50)
+  supplierId                      String         @map("supplier_id") @db.Uuid
+  warehouseId                     String         @map("warehouse_id") @db.Uuid
+  locationId                      String         @map("location_id") @db.Uuid
+  status                          DocumentStatus @default(DRAFT)
+  receiptDate                     DateTime       @default(now()) @map("receipt_date") @db.Timestamptz(6)
+  createdBy                       String         @map("created_by") @db.Uuid
+  updatedBy                       String?        @map("updated_by") @db.Uuid
+  validatedBy                     String?        @map("validated_by") @db.Uuid
+  validatedAt                     DateTime?      @map("validated_at") @db.Timestamptz(6)
+  createdAt                       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                       DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  receiptItems                    ReceiptItem[]
+  usersReceiptsCreatedByTousers   User           @relation("receipts_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  locations                       Location       @relation(fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "receipts_location_in_warehouse_fk")
+  suppliers                       Supplier       @relation(fields: [supplierId], references: [id], onUpdate: NoAction)
+  usersReceiptsUpdatedByTousers   User?          @relation("receipts_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  usersReceiptsValidatedByTousers User?          @relation("receipts_validated_byTousers", fields: [validatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  warehouses                      Warehouse      @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+
+  @@index([locationId])
+  @@index([receiptDate])
+  @@index([status])
+  @@index([supplierId])
+  @@index([warehouseId])
+  @@map("receipts")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model Stock {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  quantity   Decimal  @default(0) @db.Decimal(18, 3)
+  version    Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  location   Location @relation(fields: [locationId], references: [id], onUpdate: NoAction)
+  product    Product  @relation(fields: [productId], references: [id], onUpdate: NoAction)
+
+  @@unique([productId, locationId], map: "stock_product_location_key")
+  @@index([locationId])
+  @@index([productId])
+  @@map("stock")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model StockLedger {
+  id                                                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId                                            String             @map("product_id") @db.Uuid
+  warehouseId                                          String             @map("warehouse_id") @db.Uuid
+  locationId                                           String             @map("location_id") @db.Uuid
+  movementType                                         InventoryOperation @map("movement_type")
+  direction                                            LedgerDirection
+  quantity                                             Decimal            @db.Decimal(18, 3)
+  sourceLocationId                                     String?            @map("source_location_id") @db.Uuid
+  destinationLocationId                                String?            @map("destination_location_id") @db.Uuid
+  referenceType                                        InventoryOperation @map("reference_type")
+  referenceId                                          String             @map("reference_id") @db.Uuid
+  referenceCode                                        String             @map("reference_code") @db.VarChar(50)
+  quantityBefore                                       Decimal?           @map("quantity_before") @db.Decimal(18, 3)
+  quantityAfter                                        Decimal?           @map("quantity_after") @db.Decimal(18, 3)
+  performedBy                                          String             @map("performed_by") @db.Uuid
+  createdAt                                            DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  locationsStockLedgerDestinationLocationIdTolocations Location?          @relation("stock_ledger_destination_location_idTolocations", fields: [destinationLocationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  locationsStockLedgerLocationIdWarehouseIdTolocations Location           @relation("stock_ledger_location_id_warehouse_idTolocations", fields: [locationId, warehouseId], references: [id, warehouseId], onUpdate: NoAction, map: "stock_ledger_location_in_warehouse_fk")
+  users                                                User               @relation(fields: [performedBy], references: [id], onUpdate: NoAction)
+  products                                             Product            @relation(fields: [productId], references: [id], onUpdate: NoAction)
+  locationsStockLedgerSourceLocationIdTolocations      Location?          @relation("stock_ledger_source_location_idTolocations", fields: [sourceLocationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  warehouses                                           Warehouse          @relation(fields: [warehouseId], references: [id], onUpdate: NoAction)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([locationId])
+  @@index([movementType])
+  @@index([productId])
+  @@index([referenceId])
+  @@map("stock_ledger")
+}
+
+model Supplier {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String       @db.VarChar(200)
+  code      String?      @unique @db.VarChar(50)
+  email     String?      @db.VarChar(255)
+  phone     String?      @db.VarChar(30)
+  status    RecordStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+  receipts  Receipt[]
+
+  @@index([name])
+  @@map("suppliers")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model User {
+  id                                                       String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName                                                 String                @map("full_name") @db.VarChar(150)
+  email                                                    String                @unique @db.VarChar(255)
+  phone                                                    String?               @db.VarChar(30)
+  passwordHash                                             String                @map("password_hash")
+  role                                                     UserRole              @default(WAREHOUSE_STAFF)
+  status                                                   RecordStatus          @default(ACTIVE)
+  createdAt                                                DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                                DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+  lastLoginAt                                              DateTime?             @map("last_login_at") @db.Timestamptz(6)
+  deliveriesDeliveriesCreatedByTousers                     Delivery[]            @relation("deliveries_created_byTousers")
+  deliveriesDeliveriesPackedByTousers                      Delivery[]            @relation("deliveries_packed_byTousers")
+  deliveriesDeliveriesPickedByTousers                      Delivery[]            @relation("deliveries_picked_byTousers")
+  deliveriesDeliveriesUpdatedByTousers                     Delivery[]            @relation("deliveries_updated_byTousers")
+  deliveriesDeliveriesValidatedByTousers                   Delivery[]            @relation("deliveries_validated_byTousers")
+  internalTransfersInternalTransfersCreatedByTousers       InternalTransfer[]    @relation("internal_transfers_created_byTousers")
+  internalTransfersInternalTransfersUpdatedByTousers       InternalTransfer[]    @relation("internal_transfers_updated_byTousers")
+  internalTransfersInternalTransfersValidatedByTousers     InternalTransfer[]    @relation("internal_transfers_validated_byTousers")
+  inventoryAdjustmentsInventoryAdjustmentsAppliedByTousers InventoryAdjustment[] @relation("inventory_adjustments_applied_byTousers")
+  inventoryAdjustmentsInventoryAdjustmentsCreatedByTousers InventoryAdjustment[] @relation("inventory_adjustments_created_byTousers")
+  inventoryAdjustmentsInventoryAdjustmentsUpdatedByTousers InventoryAdjustment[] @relation("inventory_adjustments_updated_byTousers")
+  passwordResetOtps                                        PasswordResetOtp[]
+  productsProductsCreatedByTousers                         Product[]             @relation("products_created_byTousers")
+  productsProductsUpdatedByTousers                         Product[]             @relation("products_updated_byTousers")
+  receiptsReceiptsCreatedByTousers                         Receipt[]             @relation("receipts_created_byTousers")
+  receiptsReceiptsUpdatedByTousers                         Receipt[]             @relation("receipts_updated_byTousers")
+  receiptsReceiptsValidatedByTousers                       Receipt[]             @relation("receipts_validated_byTousers")
+  stockLedgers                                             StockLedger[]
+  warehousesWarehousesCreatedByTousers                     Warehouse[]           @relation("warehouses_created_byTousers")
+  warehousesWarehousesUpdatedByTousers                     Warehouse[]           @relation("warehouses_updated_byTousers")
+
+  @@map("users")
+}
+
+model Warehouse {
+  id                                                                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                                                                 String                @db.VarChar(150)
+  code                                                                 String                @unique @db.VarChar(50)
+  description                                                          String?
+  status                                                               RecordStatus          @default(ACTIVE)
+  createdAt                                                            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                                            DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy                                                            String                @map("created_by") @db.Uuid
+  updatedBy                                                            String?               @map("updated_by") @db.Uuid
+  deliveries                                                           Delivery[]
+  internalTransfersInternalTransfersDestinationWarehouseIdTowarehouses InternalTransfer[]    @relation("internal_transfers_destination_warehouse_idTowarehouses")
+  internalTransfersInternalTransfersSourceWarehouseIdTowarehouses      InternalTransfer[]    @relation("internal_transfers_source_warehouse_idTowarehouses")
+  inventoryAdjustments                                                 InventoryAdjustment[]
+  locations                                                            Location[]
+  receipts                                                             Receipt[]
+  stockLedgers                                                         StockLedger[]
+  createdByUser                                                        User                  @relation("warehouses_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction)
+  updatedByUser                                                        User?                 @relation("warehouses_updated_byTousers", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([status])
+  @@map("warehouses")
+}
+
+enum DocumentStatus {
+  DRAFT
+  WAITING
+  READY
+  DONE
+  CANCELED
+
+  @@map("document_status")
+}
+
+enum InventoryOperation {
+  RECEIPT
+  DELIVERY
+  INTERNAL_TRANSFER
+  ADJUSTMENT
+
+  @@map("inventory_operation")
+}
+
+enum LedgerDirection {
+  IN
+  OUT
+  TRANSFER
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+
+  @@map("ledger_direction")
+}
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("record_status")
+}
+
+enum UserRole {
+  INVENTORY_MANAGER
+  WAREHOUSE_STAFF
+
+  @@map("user_role")
+}
